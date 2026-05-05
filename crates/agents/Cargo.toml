@@ -1,0 +1,35 @@
+[package]
+name = "monkey-agents"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "spawnAgent primitive: context assembly, redact, audit hash chain, PTY spawn"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+monkey-core = { path = "../core" }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+sha2.workspace = true
+hex.workspace = true
+regex.workspace = true
+once_cell.workspace = true
+portable-pty.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+pretty_assertions.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
