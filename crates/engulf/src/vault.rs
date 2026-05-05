@@ -2,27 +2,735 @@
    File: crates/engulf/src/vault.rs
 
    Purpose
-   Write an Obsidian-shaped Markdown knowledge graph under
-   `.monkey/vault/`. Each note has YAML front-matter and `[[wikilinks]]`
-   to other notes.
+   Write an Obsidian-shaped Markdown knowledge graph under a vault dir
+   (typically `.monkey/vault/`). Eight notes plus a minimal
+   `.obsidian/app.json` so opening the directory in Obsidian gives a
+   live-preview, wiki-linked browse experience.
+
+   Note set
+       Home              quick-nav index
+       Architecture      stack overview, top dirs, CI, key files
+       API               endpoint table + env vars
+       Security          findings overview from the audit result
+       Deployment        steps summary from the runbook
+       Dependencies      production + dev tables
+       Onboarding        new-dev setup walkthrough
+       Codebase Map      file groups by top-level directory + configs
 
    History
    Date         Author          Changes
-   2026-05-05   Anubhav Sigdel  initial scaffold
+   2026-05-05   Anubhav Sigdel  full Rust port from packages/engulf/src/vault.ts
 */
 
-use std::path::Path;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
-use crate::scanner::ScanResult;
-use crate::security::SecurityAuditResult;
 use crate::deployer::DeploymentRunbook;
+use crate::scanner::{DepKind, FileInfo, ScanResult};
+use crate::security::SecurityAuditResult;
 
-/// Write the vault under `output_path`. Stub.
-pub async fn write_vault(
-    _output_path: &Path,
-    _scan: &ScanResult,
-    _audit: &SecurityAuditResult,
-    _runbook: &DeploymentRunbook,
-) -> anyhow::Result<Vec<std::path::PathBuf>> {
-    Ok(Vec::new())
+/// Result of [`write_vault`].
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct VaultWriteResult {
+    /// Vault root directory.
+    pub vault_path: PathBuf,
+    /// Notes that were actually written to disk.
+    pub notes_written: Vec<PathBuf>,
+}
+
+/// Write the eight notes plus `.obsidian/app.json` under `vault_path`.
+/// Creates parent directories as needed; existing files are overwritten
+/// so the vault stays in sync with the latest scan/audit/runbook.
+pub fn write_vault(
+    scan: &ScanResult,
+    audit: &SecurityAuditResult,
+    runbook: &DeploymentRunbook,
+    vault_path: &Path,
+) -> std::io::Result<VaultWriteResult> {
+    std::fs::create_dir_all(vault_path)?;
+
+    let notes: Vec<(&str, String)> = vec![
+        ("HOME.md", build_home_note(scan)),
+        ("Architecture.md", build_architecture_note(scan)),
+        ("API.md", build_api_note(scan)),
+        ("Security.md", build_security_note(audit)),
+        ("Deployment.md", build_deployment_note(runbook)),
+        ("Dependencies.md", build_dependencies_note(scan)),
+        ("Onboarding.md", build_onboarding_note(scan)),
+        ("Codebase Map.md", build_codebase_map_note(scan)),
+    ];
+
+    let mut written = Vec::with_capacity(notes.len());
+    for (name, body) in notes {
+        let p = vault_path.join(name);
+        std::fs::write(&p, body)?;
+        written.push(p);
+    }
+
+    let obsidian = vault_path.join(".obsidian");
+    std::fs::create_dir_all(&obsidian)?;
+    let app_json =
+        serde_json::to_string_pretty(&serde_json::json!({ "defaultViewMode": "preview", "livePreview": true }))
+            .expect("valid json");
+    std::fs::write(obsidian.join("app.json"), app_json)?;
+
+    Ok(VaultWriteResult {
+        vault_path: vault_path.to_path_buf(),
+        notes_written: written,
+    })
+}
+
+// ─── Frontmatter ────────────────────────────────────────────────────────────
+
+/// Owned key/value pair used to render YAML front-matter. Strings get
+/// quoted (with `"` escaped); bools and integers go through unquoted;
+/// arrays render as `key:\n  - …`.
+enum Field {
+    Str(String),
+    Int(i64),
+    Bool(bool),
+    List(Vec<String>),
+}
+
+fn frontmatter(fields: &[(&str, Field)]) -> String {
+    let mut out = String::from("---\n");
+    for (k, v) in fields {
+        match v {
+            Field::Str(s) => {
+                let escaped = s.replace('"', "\\\"");
+                out.push_str(&format!("{k}: \"{escaped}\"\n"));
+            }
+            Field::Int(n) => out.push_str(&format!("{k}: {n}\n")),
+            Field::Bool(b) => out.push_str(&format!("{k}: {b}\n")),
+            Field::List(items) => {
+                out.push_str(&format!("{k}:\n"));
+                for i in items {
+                    out.push_str(&format!("  - {i}\n"));
+                }
+            }
+        }
+    }
+    out.push_str("---\n\n");
+    out
+}
+
+fn now_iso() -> String {
+    chrono::Utc::now().to_rfc3339()
+}
+
+fn now_date() -> String {
+    chrono::Utc::now().format("%Y-%m-%d").to_string()
+}
+
+fn project_basename(scan: &ScanResult) -> String {
+    scan.root_path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "project".into())
+}
+
+// ─── Notes ──────────────────────────────────────────────────────────────────
+
+fn build_home_note(scan: &ScanResult) -> String {
+    let now = now_iso();
+    let mut s = frontmatter(&[
+        ("title", Field::Str("Home".into())),
+        ("created", Field::Str(now.clone())),
+        ("tags", Field::List(vec!["monkey".into(), "index".into()])),
+        ("type", Field::Str("index".into())),
+    ]);
+    s.push_str(&format!(
+        "# {} — Knowledge Vault\n\n> Generated by **monkey engulf** on {}\n\n",
+        project_basename(scan),
+        now_date()
+    ));
+    s.push_str(
+        "## Quick Navigation\n\n\
+         | Note | Description |\n\
+         |------|-------------|\n\
+         | [[Architecture]] | System overview, components, data flow |\n\
+         | [[API]] | All endpoints and routes |\n\
+         | [[Security]] | Security audit findings |\n\
+         | [[Deployment]] | Deploy runbook and platform info |\n\
+         | [[Dependencies]] | All packages and their purpose |\n\
+         | [[Onboarding]] | New developer setup guide |\n\
+         | [[Codebase Map]] | Directory structure decoded |\n\n\
+         ---\n\n",
+    );
+    s.push_str("## Project Snapshot\n\n");
+    s.push_str(&format!(
+        "- **Stack:** {}{}\n",
+        scan.tech_stack.primary,
+        scan.tech_stack
+            .framework
+            .as_ref()
+            .map(|f| format!(" / {f}"))
+            .unwrap_or_default()
+    ));
+    s.push_str(&format!("- **Language:** {}\n", scan.tech_stack.language));
+    s.push_str(&format!(
+        "- **Package Manager:** {}\n",
+        scan.tech_stack.package_manager.as_deref().unwrap_or("unknown")
+    ));
+    s.push_str(&format!(
+        "- **Deploy Target:** {}\n",
+        scan.tech_stack.deploy_target.as_deref().unwrap_or("unknown")
+    ));
+    s.push_str(&format!(
+        "- **Git Branch:** {}\n",
+        scan.git_info.branch.as_deref().unwrap_or("unknown")
+    ));
+    s.push_str(&format!("- **Files:** {}\n", scan.files.len()));
+    s.push_str(&format!("- **Dependencies:** {}\n", scan.dependencies.len()));
+    s.push_str(&format!("- **API Routes:** {}\n", scan.api_routes.len()));
+    s.push_str(&format!("- **Env Vars:** {}\n\n---\n\n", scan.env_vars.len()));
+
+    s.push_str("## Recent Activity\n\n");
+    if scan.git_info.recent_commits.is_empty() {
+        s.push_str("_No git history found_\n");
+    } else {
+        for c in scan.git_info.recent_commits.iter().take(5) {
+            s.push_str(&format!("- {c}\n"));
+        }
+    }
+    s.push('\n');
+    s
+}
+
+fn build_architecture_note(scan: &ScanResult) -> String {
+    let now = now_iso();
+    let mut s = frontmatter(&[
+        ("title", Field::Str("Architecture".into())),
+        ("created", Field::Str(now)),
+        ("tags", Field::List(vec!["monkey".into(), "architecture".into()])),
+        ("type", Field::Str("architecture".into())),
+        ("links", Field::List(vec!["[[Home]]".into()])),
+    ]);
+    s.push_str("# Architecture\n\n## Stack Overview\n\n```\n");
+    s.push_str(&format!("Primary:  {}\n", scan.tech_stack.primary));
+    s.push_str(&format!(
+        "Framework: {}\n",
+        scan.tech_stack.framework.as_deref().unwrap_or("N/A")
+    ));
+    s.push_str(&format!("Language:  {}\n", scan.tech_stack.language));
+    s.push_str(&format!("Runtime:   {}\n", "Node.js"));
+    s.push_str(&format!(
+        "Testing:   {}\n",
+        scan.tech_stack.test_framework.as_deref().unwrap_or("unknown")
+    ));
+    s.push_str(&format!(
+        "Deploy:    {}\n```\n\n---\n\n",
+        scan.tech_stack.deploy_target.as_deref().unwrap_or("unknown")
+    ));
+
+    // Top directories with file counts.
+    let mut top_dirs = BTreeSet::new();
+    for f in &scan.files {
+        if let Some((top, _rest)) = f.relative_path.split_once('/') {
+            top_dirs.insert(top.to_string());
+        }
+    }
+    s.push_str("## Directory Structure\n\n| Directory | Files | Purpose |\n|-----------|-------|---------|\n");
+    for dir in top_dirs.iter().take(15) {
+        let prefix = format!("{dir}/");
+        let count = scan
+            .files
+            .iter()
+            .filter(|f| f.relative_path.starts_with(&prefix))
+            .count();
+        s.push_str(&format!("| `{dir}/` | {count} files | |\n"));
+    }
+    s.push_str("\n---\n\n## CI/CD Pipeline\n\n");
+    if scan.ci_configs.is_empty() {
+        s.push_str("_No CI/CD configuration detected_\n");
+    } else {
+        for c in &scan.ci_configs {
+            let suffix = match &c.deploy_target {
+                Some(t) => format!(" → {t}"),
+                None => String::new(),
+            };
+            s.push_str(&format!(
+                "- **{:?}**: `{}`{}\n",
+                c.ci_type, c.file_path, suffix
+            ));
+        }
+    }
+    s.push_str("\n---\n\n## Key Files\n\n");
+    let configs: Vec<&FileInfo> = scan.files.iter().filter(|f| f.is_config).collect();
+    if configs.is_empty() {
+        s.push_str("_None_\n");
+    } else {
+        for f in configs {
+            s.push_str(&format!("- `{}`\n", f.relative_path));
+        }
+    }
+    s.push_str(
+        "\n---\n\n## Related Notes\n\n\
+         - [[API]] — Endpoint documentation\n\
+         - [[Dependencies]] — Package analysis\n\
+         - [[Deployment]] — Deployment runbook\n\
+         - [[Home]] — Return to index\n",
+    );
+    s
+}
+
+fn build_api_note(scan: &ScanResult) -> String {
+    let now = now_iso();
+    let mut s = frontmatter(&[
+        ("title", Field::Str("API".into())),
+        ("created", Field::Str(now)),
+        ("tags", Field::List(vec!["monkey".into(), "api".into()])),
+        ("type", Field::Str("api".into())),
+        ("routeCount", Field::Int(scan.api_routes.len() as i64)),
+    ]);
+    s.push_str(&format!(
+        "# API Reference\n\n**Total Routes:** {}\n\n---\n\n## Endpoints\n\n",
+        scan.api_routes.len()
+    ));
+    if scan.api_routes.is_empty() {
+        s.push_str(
+            "_No API routes detected automatically. Check src/app/api/ or src/routes/_\n",
+        );
+    } else {
+        s.push_str("| Method | Path | File |\n|--------|------|------|\n");
+        for r in &scan.api_routes {
+            let emoji = match r.method.as_str() {
+                "GET" => "🟢",
+                "POST" => "🔵",
+                "PUT" => "🟡",
+                "PATCH" => "🟠",
+                "DELETE" => "🔴",
+                _ => "⚪",
+            };
+            s.push_str(&format!(
+                "| {} `{}` | `{}` | `{}:{}` |\n",
+                emoji, r.method, r.path, r.file_path, r.line_number
+            ));
+        }
+    }
+    s.push_str("\n---\n\n## Environment Variables\n\n");
+    if scan.env_vars.is_empty() {
+        s.push_str("_No environment variables detected_\n");
+    } else {
+        s.push_str("| Variable | Has Example | Description |\n|----------|------------|-------------|\n");
+        for e in &scan.env_vars {
+            s.push_str(&format!(
+                "| `{}` | {} | {} |\n",
+                e.name,
+                if e.has_example { "✅" } else { "❌" },
+                e.description.as_deref().unwrap_or(""),
+            ));
+        }
+    }
+    s.push_str(
+        "\n---\n\n## Related Notes\n\n\
+         - [[Architecture]] — System overview\n\
+         - [[Security]] — Security audit\n\
+         - [[Home]] — Return to index\n",
+    );
+    s
+}
+
+fn build_security_note(audit: &SecurityAuditResult) -> String {
+    let now = now_iso();
+    let mut s = frontmatter(&[
+        ("title", Field::Str("Security".into())),
+        ("created", Field::Str(now)),
+        ("tags", Field::List(vec!["monkey".into(), "security".into()])),
+        ("type", Field::Str("security".into())),
+        ("criticalCount", Field::Int(audit.critical_count as i64)),
+        ("highCount", Field::Int(audit.high_count as i64)),
+    ]);
+    s.push_str(&format!(
+        "# Security Audit\n\n**Summary:** {}\n\n---\n\n## Findings Overview\n\n",
+        audit.summary
+    ));
+    if audit.findings.is_empty() {
+        s.push_str("_No findings_\n");
+    } else {
+        s.push_str("| Severity | Category | Title | Location |\n|----------|----------|-------|----------|\n");
+        for f in audit.findings.iter().take(20) {
+            let emoji = match f.severity {
+                crate::security::Severity::Critical => "🔴",
+                crate::security::Severity::High => "🟠",
+                crate::security::Severity::Medium => "🟡",
+                crate::security::Severity::Low => "🔵",
+                crate::security::Severity::Info => "ℹ️",
+            };
+            s.push_str(&format!(
+                "| {} `{:?}` | {} | {} | {} |\n",
+                emoji,
+                f.severity,
+                f.category,
+                f.title,
+                f.file_path.as_deref().unwrap_or("—"),
+            ));
+        }
+    }
+    s.push_str(
+        "\n---\n\n## Full Report\n\n\
+         > See `SECURITY.md` in `.monkey/context/` for the complete report with recommendations.\n\n\
+         ---\n\n## Related Notes\n\n\
+         - [[Architecture]] — System structure\n\
+         - [[Deployment]] — Deployment security\n\
+         - [[Home]] — Return to index\n",
+    );
+    s
+}
+
+fn build_deployment_note(runbook: &DeploymentRunbook) -> String {
+    let now = now_iso();
+    let mut s = frontmatter(&[
+        ("title", Field::Str("Deployment".into())),
+        ("created", Field::Str(now)),
+        ("tags", Field::List(vec!["monkey".into(), "deployment".into()])),
+        ("type", Field::Str("deployment".into())),
+        ("platform", Field::Str(runbook.platform.clone())),
+        ("estimatedTime", Field::Str(runbook.estimated_time.clone())),
+    ]);
+    s.push_str(&format!(
+        "# Deployment Guide\n\n**Platform:** {}\n**Estimated Time:** {}\n\n---\n\n## Steps Summary\n\n",
+        runbook.platform, runbook.estimated_time
+    ));
+    s.push_str("| # | Step | Type |\n|---|------|------|\n");
+    for (i, step) in runbook.steps.iter().enumerate() {
+        let kind = if step.is_manual { "👤 Manual" } else { "⚙️ Automated" };
+        s.push_str(&format!("| {} | {} | {} |\n", i + 1, step.title, kind));
+    }
+    s.push_str("\n---\n\n## Required Environment Variables\n\n");
+    if runbook.env_vars_required.is_empty() {
+        s.push_str("_All environment variables have examples_\n");
+    } else {
+        for e in &runbook.env_vars_required {
+            s.push_str(&format!("- [ ] `{e}`\n"));
+        }
+    }
+    s.push_str(
+        "\n---\n\n## Full Runbook\n\n\
+         > See `DEPLOYMENT.md` in `.monkey/context/` for complete commands and instructions.\n\n\
+         ---\n\n## Related Notes\n\n\
+         - [[Security]] — Security considerations\n\
+         - [[Architecture]] — System overview\n\
+         - [[Home]] — Return to index\n",
+    );
+    s
+}
+
+fn build_dependencies_note(scan: &ScanResult) -> String {
+    let now = now_iso();
+    let mut s = frontmatter(&[
+        ("title", Field::Str("Dependencies".into())),
+        ("created", Field::Str(now)),
+        ("tags", Field::List(vec!["monkey".into(), "dependencies".into()])),
+        ("type", Field::Str("dependencies".into())),
+        ("totalCount", Field::Int(scan.dependencies.len() as i64)),
+    ]);
+    s.push_str(&format!(
+        "# Dependencies\n\n**Total:** {} packages\n\n---\n\n",
+        scan.dependencies.len()
+    ));
+
+    let prod: Vec<_> = scan
+        .dependencies
+        .iter()
+        .filter(|d| d.kind == DepKind::Production)
+        .take(30)
+        .collect();
+    let dev: Vec<_> = scan
+        .dependencies
+        .iter()
+        .filter(|d| d.kind == DepKind::Dev)
+        .take(20)
+        .collect();
+
+    s.push_str(&format!(
+        "## Production Dependencies ({})\n\n",
+        prod.len()
+    ));
+    if prod.is_empty() {
+        s.push_str("_None_\n\n");
+    } else {
+        s.push_str("| Package | Version | Source |\n|---------|---------|--------|\n");
+        for d in prod {
+            s.push_str(&format!(
+                "| `{}` | `{}` | {:?} |\n",
+                d.name, d.version, d.source
+            ));
+        }
+        s.push('\n');
+    }
+    s.push_str("---\n\n");
+
+    s.push_str(&format!(
+        "## Dev Dependencies ({})\n\n",
+        dev.len()
+    ));
+    if dev.is_empty() {
+        s.push_str("_None_\n\n");
+    } else {
+        s.push_str("| Package | Version | Source |\n|---------|---------|--------|\n");
+        for d in dev {
+            s.push_str(&format!(
+                "| `{}` | `{}` | {:?} |\n",
+                d.name, d.version, d.source
+            ));
+        }
+        s.push('\n');
+    }
+    s.push_str(
+        "---\n\n## Related Notes\n\n\
+         - [[Security]] — Vulnerability audit\n\
+         - [[Architecture]] — Stack overview\n\
+         - [[Home]] — Return to index\n",
+    );
+    s
+}
+
+fn build_onboarding_note(scan: &ScanResult) -> String {
+    let now = now_iso();
+    let project = project_basename(scan);
+    let pm = scan.tech_stack.package_manager.as_deref().unwrap_or("npm");
+    let install_cmd = match pm {
+        "pnpm" => "pnpm install".to_string(),
+        "yarn" => "yarn".to_string(),
+        "bun" => "bun install".to_string(),
+        other => format!("{other} install"),
+    };
+    let dev_cmd = match pm {
+        "pnpm" => "pnpm dev".to_string(),
+        "yarn" => "yarn dev".to_string(),
+        other => format!("{other} run dev"),
+    };
+
+    let mut s = frontmatter(&[
+        ("title", Field::Str("Onboarding".into())),
+        ("created", Field::Str(now)),
+        ("tags", Field::List(vec!["monkey".into(), "onboarding".into()])),
+        ("type", Field::Str("onboarding".into())),
+    ]);
+    s.push_str(&format!(
+        "# New Developer Onboarding Guide\n\nWelcome to the **{project}** project!\n\n---\n\n## Prerequisites\n\n"
+    ));
+    let runtime = if scan.tech_stack.language == "TypeScript"
+        || scan.tech_stack.language == "JavaScript"
+    {
+        "Node.js ≥ 20".to_string()
+    } else {
+        scan.tech_stack.language.clone()
+    };
+    s.push_str(&format!("- **Runtime:** {runtime}\n"));
+    s.push_str(&format!("- **Package Manager:** {pm}\n"));
+    if let Some(t) = &scan.tech_stack.deploy_target {
+        s.push_str(&format!("- **Deploy Target Account:** {t}\n"));
+    }
+    s.push_str("\n---\n\n## Local Setup\n\n```bash\n");
+    s.push_str("# 1. Clone the repository\n");
+    s.push_str(&format!(
+        "git clone {}\ncd {}\n\n",
+        scan.git_info.remote_url.as_deref().unwrap_or("<repo-url>"),
+        project,
+    ));
+    s.push_str(&format!("# 2. Install dependencies\n{install_cmd}\n\n"));
+    s.push_str("# 3. Set up environment variables\ncp .env.example .env\n# Edit .env and fill in real values (see [[API]] for descriptions)\n\n");
+    s.push_str(&format!("# 4. Start the dev server\n{dev_cmd}\n```\n\n---\n\n"));
+
+    s.push_str("## Environment Variables\n\n");
+    if scan.env_vars.is_empty() {
+        s.push_str("_No environment variables required_\n");
+    } else {
+        s.push_str("You need to configure these variables in your `.env` file:\n\n");
+        for e in &scan.env_vars {
+            let mut line = format!("- `{}`", e.name);
+            if let Some(d) = &e.description {
+                line.push_str(&format!(" — {d}"));
+            }
+            line.push_str(if e.has_example {
+                " *(has example)*"
+            } else {
+                " ⚠️ *no example provided*"
+            });
+            line.push('\n');
+            s.push_str(&line);
+        }
+    }
+    s.push_str("\n---\n\n## Project Structure\n\n");
+    let mut top: BTreeSet<String> = BTreeSet::new();
+    for f in &scan.files {
+        if let Some((t, _)) = f.relative_path.split_once('/') {
+            top.insert(t.to_string());
+        }
+    }
+    for d in top.iter().take(10) {
+        s.push_str(&format!("- `{d}/`\n"));
+    }
+    s.push_str("\n---\n\n## Key Commands\n\n");
+    s.push_str("| Command | Description |\n|---------|-------------|\n");
+    s.push_str(&format!("| `{install_cmd}` | Install dependencies |\n"));
+    s.push_str(&format!("| `{dev_cmd}` | Start dev server |\n"));
+    s.push_str(&format!("| `{pm} run build` | Build for production |\n"));
+    s.push_str(&format!("| `{pm} test` | Run tests |\n"));
+
+    s.push_str(
+        "\n---\n\n## Related Notes\n\n\
+         - [[Architecture]] — Understand the system\n\
+         - [[API]] — API reference\n\
+         - [[Deployment]] — Deploy the app\n\
+         - [[Home]] — Return to index\n",
+    );
+    s
+}
+
+fn build_codebase_map_note(scan: &ScanResult) -> String {
+    let now = now_iso();
+    let mut s = frontmatter(&[
+        ("title", Field::Str("Codebase Map".into())),
+        ("created", Field::Str(now)),
+        ("tags", Field::List(vec!["monkey".into(), "codebase".into()])),
+        ("type", Field::Str("codebase".into())),
+        ("totalFiles", Field::Int(scan.files.len() as i64)),
+    ]);
+    s.push_str(&format!(
+        "# Codebase Map\n\n**Total Files:** {}\n**Root:** `{}`\n\n---\n\n## Directory Breakdown\n\n",
+        scan.files.len(),
+        scan.root_path.display()
+    ));
+
+    let mut groups: BTreeMap<String, Vec<&FileInfo>> = BTreeMap::new();
+    for f in &scan.files {
+        if let Some((top, _)) = f.relative_path.split_once('/') {
+            groups.entry(top.to_string()).or_default().push(f);
+        }
+    }
+    for (i, (dir, files)) in groups.iter().take(12).enumerate() {
+        if i > 0 {
+            s.push('\n');
+        }
+        let mut subdirs: BTreeSet<String> = BTreeSet::new();
+        for f in files {
+            let parts: Vec<&str> = f.relative_path.split('/').collect();
+            if parts.len() >= 2 {
+                subdirs.insert(format!("{}/{}", parts[0], parts[1]));
+            }
+        }
+        s.push_str(&format!(
+            "### `{dir}/`\n{} files\n\n",
+            files.len()
+        ));
+        for sd in subdirs.iter().take(8) {
+            s.push_str(&format!("- `{sd}`\n"));
+        }
+    }
+
+    s.push_str("\n---\n\n## Configuration Files\n\n");
+    let configs: Vec<&FileInfo> = scan.files.iter().filter(|f| f.is_config).collect();
+    if configs.is_empty() {
+        s.push_str("_None found_\n");
+    } else {
+        for f in configs {
+            s.push_str(&format!("- `{}`\n", f.relative_path));
+        }
+    }
+    s.push_str(
+        "\n---\n\n## Related Notes\n\n\
+         - [[Architecture]] — System design\n\
+         - [[Dependencies]] — Package list\n\
+         - [[Home]] — Return to index\n",
+    );
+    s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::deployer::DeploymentRunbook;
+    use crate::scanner::{
+        DepKind, DepSource, DependencyInfo, FileInfo, ScanResult, TechStackInfo,
+    };
+    use crate::security::SecurityAuditResult;
+    use tempfile::tempdir;
+
+    fn fake_scan() -> ScanResult {
+        ScanResult {
+            root_path: std::path::PathBuf::from("/tmp/proj"),
+            tech_stack: TechStackInfo {
+                primary: "Rust".into(),
+                language: "Rust".into(),
+                package_manager: Some("cargo".into()),
+                ..Default::default()
+            },
+            files: vec![
+                FileInfo {
+                    relative_path: "src/main.rs".into(),
+                    size_bytes: 100,
+                    extension: ".rs".into(),
+                    is_config: false,
+                },
+                FileInfo {
+                    relative_path: "Cargo.toml".into(),
+                    size_bytes: 50,
+                    extension: ".toml".into(),
+                    is_config: true,
+                },
+            ],
+            dependencies: vec![DependencyInfo {
+                name: "serde".into(),
+                version: "*".into(),
+                kind: DepKind::Production,
+                source: DepSource::Cargo,
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn writes_eight_notes_plus_obsidian_config() {
+        let dir = tempdir().unwrap();
+        let scan = fake_scan();
+        let audit = SecurityAuditResult::default();
+        let runbook = DeploymentRunbook {
+            platform: "Vercel".into(),
+            estimated_time: "15-30 minutes".into(),
+            ..Default::default()
+        };
+        let out = write_vault(&scan, &audit, &runbook, dir.path()).unwrap();
+        assert_eq!(out.notes_written.len(), 8);
+        for name in [
+            "HOME.md",
+            "Architecture.md",
+            "API.md",
+            "Security.md",
+            "Deployment.md",
+            "Dependencies.md",
+            "Onboarding.md",
+            "Codebase Map.md",
+        ] {
+            assert!(dir.path().join(name).exists(), "missing {name}");
+        }
+        assert!(dir.path().join(".obsidian/app.json").exists());
+    }
+
+    #[test]
+    fn home_note_has_frontmatter_and_quick_nav() {
+        let scan = fake_scan();
+        let body = build_home_note(&scan);
+        assert!(body.starts_with("---\n"));
+        assert!(body.contains("title: \"Home\""));
+        assert!(body.contains("[[Architecture]]"));
+        assert!(body.contains("Knowledge Vault"));
+    }
+
+    #[test]
+    fn dependencies_note_lists_production_block() {
+        let scan = fake_scan();
+        let body = build_dependencies_note(&scan);
+        assert!(body.contains("Production Dependencies (1)"));
+        assert!(body.contains("`serde`"));
+    }
+
+    #[test]
+    fn frontmatter_escapes_quotes_in_strings() {
+        let raw = frontmatter(&[("title", Field::Str("He said \"hi\"".into()))]);
+        assert!(raw.contains("title: \"He said \\\"hi\\\"\""));
+    }
 }
