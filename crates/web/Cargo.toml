@@ -1,0 +1,33 @@
+[package]
+name = "monkey-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "WASM frontend for the deck dashboard (leptos)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+# Pinned via patch-level only for now; bump the leptos line as the
+# framework evolves.
+leptos = { version = "0.7", features = ["csr"] }
+leptos_meta = { version = "0.7" }
+console_error_panic_hook = "0.1"
+wasm-bindgen = "0.2"
+serde.workspace = true
+serde_json.workspace = true
+
+# xterm.js bindings — terminal emulator widget rendered into a <div>.
+# We talk to it via wasm-bindgen JS interop (declared in src/xterm.rs).
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "WebSocket", "BinaryType", "MessageEvent", "CloseEvent", "ErrorEvent",
+    "Element", "HtmlElement", "Document", "Window",
+] }
+gloo = { version = "0.11", features = ["net"] }
+gloo-net = "0.6"
