@@ -45,6 +45,11 @@ pub use security::{
     audit as run_security_audit, audit_with as run_security_audit_with, AuditOptions,
     SecurityAuditResult, SecurityFinding, Severity,
 };
+pub use deployer::{
+    generate_deployment_runbook, generate_with as generate_deployment_with, DeployStep,
+    DeploymentRunbook, RunbookOptions,
+};
+pub use vault::{write_vault, VaultWriteResult};
 
 /// User-facing config for [`run_engulf`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,6 +108,7 @@ pub async fn run_engulf(config: EngulfConfig) -> anyhow::Result<EngulfSummary> {
     let mut summary = EngulfSummary::default();
     let mut scan_result: Option<ScanResult> = None;
     let mut audit_result: Option<SecurityAuditResult> = None;
+    let mut runbook_result: Option<DeploymentRunbook> = None;
 
     for phase in phases {
         match phase {
@@ -147,15 +153,56 @@ pub async fn run_engulf(config: EngulfConfig) -> anyhow::Result<EngulfSummary> {
             Phase::Docs => {
                 summary.phases_skipped.push((Phase::Docs, "docs phase port pending".into()));
             }
-            Phase::Vault => {
-                summary.phases_skipped.push((Phase::Vault, "vault phase port pending".into()));
-            }
             Phase::Deploy => {
-                summary.phases_skipped.push((Phase::Deploy, "deploy phase port pending".into()));
+                let Some(scan) = scan_result.as_ref() else {
+                    summary
+                        .phases_skipped
+                        .push((Phase::Deploy, "no scan result available".into()));
+                    continue;
+                };
+                let opts = RunbookOptions {
+                    provider: Some(config.provider),
+                    skip_llm: false,
+                    ..Default::default()
+                };
+                let r = deployer::generate_with(scan, opts).await?;
+                tracing::info!(
+                    platform = %r.platform,
+                    steps = r.steps.len(),
+                    estimated = %r.estimated_time,
+                    "deployment runbook complete"
+                );
+                if let Some(out) = output_path_for(&config, &target) {
+                    let path = out.join("context").join("DEPLOYMENT.md");
+                    write_file(&path, &r.markdown)?;
+                    summary.files_written.push(path);
+                }
+                runbook_result = Some(r);
+                summary.phases_completed.push(Phase::Deploy);
+            }
+            Phase::Vault => {
+                let Some(scan) = scan_result.as_ref() else {
+                    summary
+                        .phases_skipped
+                        .push((Phase::Vault, "no scan result available".into()));
+                    continue;
+                };
+                let audit = audit_result.clone().unwrap_or_default();
+                let runbook = runbook_result.clone().unwrap_or_default();
+                let Some(out) = output_path_for(&config, &target) else { continue; };
+                let vault_path = out.join("vault");
+                let r = vault::write_vault(scan, &audit, &runbook, &vault_path)?;
+                tracing::info!(
+                    notes = r.notes_written.len(),
+                    "vault written"
+                );
+                summary.files_written.extend(r.notes_written.clone());
+                summary.phases_completed.push(Phase::Vault);
             }
         }
     }
-    let _ = audit_result; // reserved for the docs/vault phases.
+    let _ = audit_result; // kept for future use (docs phase will re-read).
+    let _ = runbook_result;
     Ok(summary)
 }
 
