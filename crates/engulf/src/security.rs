@@ -110,13 +110,13 @@ impl Severity {
             Severity::Critical => "critical",
         }
     }
-    fn emoji(self) -> &'static str {
+    fn marker(self) -> &'static str {
         match self {
-            Severity::Info => "ℹ️",
-            Severity::Low => "🔵",
-            Severity::Medium => "🟡",
-            Severity::High => "🟠",
-            Severity::Critical => "🔴",
+            Severity::Info => "[info]",
+            Severity::Low => "[low]",
+            Severity::Medium => "[medium]",
+            Severity::High => "[high]",
+            Severity::Critical => "[critical]",
         }
     }
 }
@@ -466,7 +466,7 @@ fn render_markdown(scan: &ScanResult, findings: &[SecurityFinding], summary: &st
         let mut body = String::new();
         body.push_str(&format!(
             "## {} {} ({})\n\n",
-            sev.emoji(),
+            sev.marker(),
             capitalize(sev.label()),
             group.len()
         ));
@@ -514,11 +514,11 @@ fn render_markdown(scan: &ScanResult, findings: &[SecurityFinding], summary: &st
 
 | Severity | Count |
 |----------|-------|
-| 🔴 Critical | {critical} |
-| 🟠 High | {high} |
-| 🟡 Medium | {medium} |
-| 🔵 Low | {low} |
-| ℹ️ Info | {info} |
+| Critical | {critical} |
+| High     | {high} |
+| Medium   | {medium} |
+| Low      | {low} |
+| Info     | {info} |
 
 ---
 

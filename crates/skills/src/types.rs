@@ -91,7 +91,7 @@ pub struct SkillFinding {
 }
 
 /// Per-invocation context handed to every skill.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SkillContext {
     /// Working directory.
     pub cwd: PathBuf,

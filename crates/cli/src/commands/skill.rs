@@ -52,6 +52,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                 cwd: cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into())),
                 base_branch: base,
                 persist_reports: persist,
+                ..Default::default()
             };
             let payload: serde_json::Value = match input {
                 Some(s) => serde_json::from_str(&s)?,

@@ -58,8 +58,8 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                     if !p.is_file() { continue; }
                     if p.extension().and_then(|e| e.to_str()) != Some("log") { continue; }
                     match verify_audit_log(&p) {
-                        Ok(()) => eprintln!("✓ {}", p.display()),
-                        Err(e) => { bad += 1; eprintln!("✗ {} — {e}", p.display()); }
+                        Ok(()) => eprintln!("[ok]   {}", p.display()),
+                        Err(e) => { bad += 1; eprintln!("[fail] {} — {e}", p.display()); }
                     }
                 }
             }

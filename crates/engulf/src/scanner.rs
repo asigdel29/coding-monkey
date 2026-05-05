@@ -404,7 +404,7 @@ impl CodebaseScanner {
         let rs = count_ext(".rs");
         let go = count_ext(".go");
 
-        let language = if ts > js && ts > py {
+        let language: String = if ts > js && ts > py {
             "TypeScript".into()
         } else if js > py {
             "JavaScript".into()

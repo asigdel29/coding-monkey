@@ -40,18 +40,28 @@ pub struct SpawnResult {
 }
 
 /// Live PTY connection to a running agent process.
-#[derive(Debug)]
 pub struct AgentTerminal {
     /// Stable id (uuid v7 prefixed by `term_`).
     pub id: String,
     inner: Arc<Mutex<TerminalInner>>,
 }
 
-#[derive(Debug)]
+impl std::fmt::Debug for AgentTerminal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AgentTerminal").field("id", &self.id).finish()
+    }
+}
+
 struct TerminalInner {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     child: Box<dyn portable_pty::Child + Send + Sync>,
+}
+
+impl std::fmt::Debug for TerminalInner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TerminalInner").finish_non_exhaustive()
+    }
 }
 
 impl AgentTerminal {

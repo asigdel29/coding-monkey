@@ -18,5 +18,5 @@ single-char-binding-names-threshold = 4
 allow-print-in-tests = true
 
 # MSRV — keep in sync with rust-toolchain.toml so clippy warnings
-# don't fire on syntax not yet stable in 1.84.
-msrv = "1.84"
+# don't fire on syntax not yet stable in 1.88.
+msrv = "1.88"

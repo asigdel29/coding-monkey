@@ -34,6 +34,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                 cwd: std::env::current_dir().unwrap_or_else(|_| ".".into()),
                 base_branch: args.base.clone(),
                 persist_reports: args.persist,
+                ..Default::default()
             },
         )
         .await?;

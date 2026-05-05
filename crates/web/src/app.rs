@@ -184,16 +184,10 @@ pub fn App() -> impl IntoView {
         });
     };
 
-    // Wrap the toggle action in leptos::Callback so the For-children
-    // closure can clone it once per row.
+    // Clone the client into a value the For-children body can reach
+    // each row. DeckClient holds an Rc<RefCell<_>> internally so it
+    // doesn't implement Send; we keep all touches on the main thread.
     let client_toggle = client.clone();
-    let toggle_todo: Callback<u32> = Callback::new(move |line: u32| {
-        let id = active_id.get_untracked();
-        if id.is_empty() {
-            return;
-        }
-        client_toggle.send(&ClientMsg::TentacleToggle { id, line });
-    });
 
     // ── Render ─────────────────────────────────────────────────────────────
     view! {
@@ -286,18 +280,31 @@ pub fn App() -> impl IntoView {
                         <For
                             each=move || todos.get()
                             key=|t| t.line
-                            children=move |t| {
-                                let line = t.line;
-                                let on_toggle = toggle_todo;
-                                view! {
-                                    <li class:done=t.done>
-                                        <input
-                                            type="checkbox"
-                                            prop:checked=t.done
-                                            on:change=move |_| on_toggle.run(line)
-                                        />
-                                        <span>{t.text}</span>
-                                    </li>
+                            children={
+                                let client_toggle = client_toggle.clone();
+                                move |t| {
+                                    let line = t.line;
+                                    let client_for_row = client_toggle.clone();
+                                    view! {
+                                        <li class:done=t.done>
+                                            <input
+                                                type="checkbox"
+                                                prop:checked=t.done
+                                                on:change=move |_| {
+                                                    let id = active_id.get_untracked();
+                                                    if !id.is_empty() {
+                                                        client_for_row.send(
+                                                            &ClientMsg::TentacleToggle {
+                                                                id,
+                                                                line,
+                                                            },
+                                                        );
+                                                    }
+                                                }
+                                            />
+                                            <span>{t.text}</span>
+                                        </li>
+                                    }
                                 }
                             }
                         />

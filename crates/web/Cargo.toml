@@ -33,3 +33,6 @@ web-sys = { version = "0.3", features = [
 ] }
 gloo = { version = "0.11", features = ["net"] }
 gloo-net = "0.6"
+# Wraps !Send web-sys handles so leptos' Send bounds compile on wasm32
+# (single-threaded; SendWrapper panics if accessed across threads).
+send_wrapper = "0.6"
