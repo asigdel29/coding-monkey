@@ -52,9 +52,10 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         key: args.key,
         enforce_tls_off_loopback: !args.insecure_no_tls,
         static_dir: args.static_dir,
+        ..Default::default()
     };
     let handle = start_deck(opts).await?;
-    eprintln!("🐙 deck listening on {}", handle.url);
+    eprintln!("deck listening on {}", handle.url);
     eprintln!("    expires: {}", handle.expires_at.to_rfc3339());
     tokio::signal::ctrl_c().await.ok();
     handle.close().await?;

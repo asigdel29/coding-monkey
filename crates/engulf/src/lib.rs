@@ -9,8 +9,9 @@
        vault     — Obsidian-shaped Markdown knowledge graph
        deploy    — production-ready deployment runbook
 
-   Output goes to .monkey/context/*.md + .monkey/vault/. Subsequent
-   `monkey chat` / `monkey deck` spawns pick it up automatically.
+   Output goes to the `.md` files under `.monkey/context/` plus the
+   `.monkey/vault/` tree. Subsequent `monkey chat` / `monkey deck`
+   spawns pick it up automatically.
 
    History
    Date         Author          Changes

@@ -41,7 +41,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     write_if_missing(&monkey.join("tentacles").join("main").join("CONTEXT.md"), "# main tentacle\n")?;
     write_if_missing(&monkey.join("tentacles").join("main").join("todo.md"), "- [ ] first task\n")?;
 
-    eprintln!("✓ scaffolded {} (.monkey/ written)", cwd.display());
+    eprintln!("scaffolded {} (.monkey/ written)", cwd.display());
     Ok(())
 }
 

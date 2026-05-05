@@ -22,10 +22,11 @@
 */
 
 use leptos::prelude::*;
+use send_wrapper::SendWrapper;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{BinaryType, MessageEvent, WebSocket};
@@ -168,19 +169,24 @@ pub enum ConnState {
     Reconnecting,
 }
 
-/// Live connection handle. Cheap to clone; holds shared state via Rc.
+/// Live connection handle. Cheap to clone; holds shared state via
+/// `Arc<SendWrapper<RefCell<Inner>>>`. The SendWrapper makes the !Send
+/// `WebSocket` handle satisfy leptos' Send bounds — it panics if
+/// touched off the main thread, which on wasm32 cannot happen.
 #[derive(Clone)]
 pub struct DeckClient {
-    inner: Rc<RefCell<Inner>>,
+    inner: Arc<SendWrapper<RefCell<Inner>>>,
     /// Current connection state, observable from leptos.
     pub state: RwSignal<ConnState>,
 }
+
+type MsgHandler = Arc<SendWrapper<Box<dyn Fn(ServerMsg)>>>;
 
 struct Inner {
     url: String,
     token: String,
     socket: Option<WebSocket>,
-    on_msg: Option<Rc<dyn Fn(ServerMsg)>>,
+    on_msg: Option<MsgHandler>,
     backoff_ms: u32,
 }
 
@@ -189,13 +195,13 @@ impl DeckClient {
     /// `ws://127.0.0.1:8787/ws`). `token` is the `?t=` value.
     pub fn new(url: impl Into<String>, token: impl Into<String>) -> Self {
         Self {
-            inner: Rc::new(RefCell::new(Inner {
+            inner: Arc::new(SendWrapper::new(RefCell::new(Inner {
                 url: url.into(),
                 token: token.into(),
                 socket: None,
                 on_msg: None,
                 backoff_ms: 250,
-            })),
+            }))),
             state: RwSignal::new(ConnState::Connecting),
         }
     }
@@ -203,7 +209,8 @@ impl DeckClient {
     /// Register the inbound message handler. Called once before
     /// [`Self::connect`].
     pub fn on_message(&self, cb: impl Fn(ServerMsg) + 'static) {
-        self.inner.borrow_mut().on_msg = Some(Rc::new(cb));
+        let boxed: Box<dyn Fn(ServerMsg)> = Box::new(cb);
+        self.inner.borrow_mut().on_msg = Some(Arc::new(SendWrapper::new(boxed)));
     }
 
     /// Open the socket. Reuses the existing handler / backoff state.
@@ -223,7 +230,7 @@ impl DeckClient {
         ws.set_binary_type(BinaryType::Arraybuffer);
 
         // open: send auth.
-        let inner_open = Rc::clone(&self.inner);
+        let inner_open = Arc::clone(&self.inner);
         let on_open = Closure::wrap(Box::new(move |_| {
             let auth = ClientMsg::Auth {
                 token: inner_open.borrow().token.clone(),
@@ -238,7 +245,7 @@ impl DeckClient {
         on_open.forget();
 
         // message: parse + dispatch.
-        let inner_msg = Rc::clone(&self.inner);
+        let inner_msg = Arc::clone(&self.inner);
         let state_msg = state_sig;
         let on_message = Closure::wrap(Box::new(move |evt: MessageEvent| {
             if let Some(s) = evt.data().as_string() {
@@ -249,7 +256,7 @@ impl DeckClient {
                         inner_msg.borrow_mut().backoff_ms = 250;
                     }
                     if let Some(cb) = inner_msg.borrow().on_msg.clone() {
-                        cb(msg);
+                        (cb)(msg);
                     }
                 } else if let Ok(v) = serde_json::from_str::<Value>(&s) {
                     web_sys::console::warn_1(

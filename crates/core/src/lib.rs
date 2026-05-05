@@ -33,7 +33,7 @@ pub mod types;
 
 pub use errors::Error;
 pub use ids::generate_id;
-pub use models::{ModelRegistry, ModelSelector, ModelSpec, ModelTier};
+pub use models::{tier_for_task, ModelRegistry, ModelSelector, ModelSpec, ModelTier, Provider};
 pub use repos::{detect_repo, discover_repos, RepoComplexity, TechStack};
 pub use types::{
     OrchestratorConfig, RepoConfig, SessionState, TaskState, TaskStatus, TaskType, TokenUsage,

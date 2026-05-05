@@ -62,7 +62,7 @@ pub struct PromptRequest {
 /// or fall back silently (engulf's security phase prefers silent
 /// fallback so a key-less run still produces static findings).
 pub async fn complete(req: PromptRequest) -> anyhow::Result<String> {
-    let key = match req.api_key {
+    let key = match req.api_key.clone() {
         Some(k) => k,
         None => match req.provider {
             Provider::Anthropic => std::env::var("ANTHROPIC_API_KEY")

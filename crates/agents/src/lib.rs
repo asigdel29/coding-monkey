@@ -5,8 +5,9 @@
    The "spawn an agent" primitive. Five responsibilities, all preserved
    from the TS port:
 
-     1. assemble_context — read .monkey/context/*.md + active tentacle's
-        CONTEXT.md + todo.md, cap at 32 KB, surface truncation.
+     1. assemble_context — read every `.md` under `.monkey/context/`
+        + active tentacle's CONTEXT.md + todo.md, cap at 32 KB, surface
+        truncation.
      2. redact          — scrub secrets from agent stdout before logging.
      3. AuditLog        — append-only, hash-chained .monkey/sessions/audit-*.log.
      4. doctor          — check claude/codex CLIs are on PATH.

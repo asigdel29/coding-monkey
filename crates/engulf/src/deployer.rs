@@ -461,7 +461,7 @@ fn build_markdown(
             steps_md.push_str(&format!("\n\n```bash\n{cmd}\n```"));
         }
         if s.is_manual {
-            steps_md.push_str("\n\n> ⚠️ **Manual step** — requires your input or credentials");
+            steps_md.push_str("\n\n> **Manual step** — requires your input or credentials");
         }
     }
 
@@ -473,8 +473,8 @@ fn build_markdown(
             t.push_str(&format!(
                 "| `{}` | {} | {} |\n",
                 e.name,
-                if e.has_example { "✅" } else { "❌" },
-                if e.found_in_code { "✅" } else { "❌" },
+                if e.has_example { "yes" } else { "no" },
+                if e.found_in_code { "yes" } else { "no" },
             ));
         }
         t

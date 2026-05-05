@@ -570,7 +570,7 @@ fn finalize(
     ));
     md.push_str("## Stages\n\n| # | Stage | Result | Detail |\n|---|---|---|---|\n");
     for (i, s) in stages.iter().enumerate() {
-        let mark = if s.ok { "✅" } else { "❌" };
+        let mark = if s.ok { "ok  " } else { "fail" };
         let one_line = s.detail.lines().next().unwrap_or("");
         md.push_str(&format!(
             "| {} | {} | {mark} | {one_line} |\n",

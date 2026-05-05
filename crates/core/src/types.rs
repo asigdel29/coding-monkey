@@ -4,7 +4,7 @@
    Purpose
    Data models shared across the workspace — task lifecycle, token
    accounting, session state, repo configuration. All types implement
-   serde so they can round-trip through .monkey/sessions/*.json.
+   serde so they can round-trip through `.monkey/sessions/<id>.json`.
 
    History
    Date         Author          Changes

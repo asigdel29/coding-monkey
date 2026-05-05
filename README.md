@@ -318,6 +318,63 @@ trunk serve crates/web/index.html
 
 Subsequent commits port crate-by-crate to full parity with the TS reference.
 
+## Credits
+
+`coding-monkey` is built on the work of several open-source projects.
+The pieces it ports, wraps, or directly draws on:
+
+### Agent CLIs
+
+- **[Claude Code](https://github.com/anthropics/claude-code)** — Anthropic's
+  official CLI. `monkey-agents` spawns it as the default agent CLI; the
+  PTY-multiplex pattern in `crates/agents/src/spawn.rs` is shaped to match
+  what Claude Code expects on stdin / produces on stdout.
+- **[Codex CLI](https://github.com/openai/codex)** — OpenAI's official CLI.
+  `monkey-agents` falls back to it when `claude` isn't on `PATH`; both
+  adapters share the same prompt-assembly path.
+
+### Web frontend
+
+- **[Octogent](https://github.com/asigdel29/octogent)** — the original
+  octopus-shaped pixel UI that the deck dashboard layout descends from.
+  The three-pane CSS grid (tentacles / terminals / context+todo) and the
+  per-tentacle pixel-icon convention come from there. The visual mark is
+  replaced with the pixel-monkey (`crates/web/src/icon.rs`); the
+  *concept* of tentacles as scoped work containers is preserved.
+
+### Terminal / agent infrastructure
+
+- **[Warp](https://github.com/warpdotdev/warp)** — Warp's terminal block
+  model and the patterns from
+  [`session-sharing-protocol`](https://github.com/warpdotdev/session-sharing-protocol)
+  inform `monkey-deck`'s WS terminal-multiplexing protocol. The monkey
+  pentest engine uses ideas from
+  [`workflows`](https://github.com/warpdotdev/workflows) for the skill
+  registry shape. We do not vendor Warp source; the dependencies we
+  share with them (`portable-pty`, `tokio-tungstenite`, `axum`) are the
+  community crates Warp itself uses.
+- **[Warp `rmcp`](https://github.com/warpdotdev/rmcp)** — the Rust MCP
+  SDK. A future `monkey-mcp` crate (not yet present) will use this for
+  agent ↔ tool wiring.
+
+### Pentest engine
+
+- **[Pensar Apex](https://github.com/pensarai/apex)** — the AI pentest
+  agent the TypeScript reference shelled out to. `monkey-pentest-agent`
+  is a native-Rust reimplementation: pattern-based whitebox source
+  analysis plus HTTP-probe blackbox checks. The severity bucketing, CWE
+  mapping, and result schema come from Apex's report shape.
+
+### Codebase scanning + security audit
+
+- **[gitleaks](https://github.com/gitleaks/gitleaks)** — the secret-scan
+  patterns in `monkey-pentest-agent::whitebox` (Anthropic / OpenAI /
+  GitHub / AWS / PEM block patterns) are the same regex shapes gitleaks
+  ships, ported to Rust's `regex` crate.
+
+If you're a maintainer of one of these projects and want a citation
+adjusted, open an issue on this repo.
+
 ## License
 
 MIT

@@ -295,17 +295,9 @@ fn build_api_note(scan: &ScanResult) -> String {
     } else {
         s.push_str("| Method | Path | File |\n|--------|------|------|\n");
         for r in &scan.api_routes {
-            let emoji = match r.method.as_str() {
-                "GET" => "🟢",
-                "POST" => "🔵",
-                "PUT" => "🟡",
-                "PATCH" => "🟠",
-                "DELETE" => "🔴",
-                _ => "⚪",
-            };
             s.push_str(&format!(
-                "| {} `{}` | `{}` | `{}:{}` |\n",
-                emoji, r.method, r.path, r.file_path, r.line_number
+                "| `{}` | `{}` | `{}:{}` |\n",
+                r.method, r.path, r.file_path, r.line_number
             ));
         }
     }
@@ -318,7 +310,7 @@ fn build_api_note(scan: &ScanResult) -> String {
             s.push_str(&format!(
                 "| `{}` | {} | {} |\n",
                 e.name,
-                if e.has_example { "✅" } else { "❌" },
+                if e.has_example { "yes" } else { "no" },
                 e.description.as_deref().unwrap_or(""),
             ));
         }
@@ -351,20 +343,12 @@ fn build_security_note(audit: &SecurityAuditResult) -> String {
     } else {
         s.push_str("| Severity | Category | Title | Location |\n|----------|----------|-------|----------|\n");
         for f in audit.findings.iter().take(20) {
-            let emoji = match f.severity {
-                crate::security::Severity::Critical => "🔴",
-                crate::security::Severity::High => "🟠",
-                crate::security::Severity::Medium => "🟡",
-                crate::security::Severity::Low => "🔵",
-                crate::security::Severity::Info => "ℹ️",
-            };
             s.push_str(&format!(
-                "| {} `{:?}` | {} | {} | {} |\n",
-                emoji,
+                "| `{:?}` | {} | {} | {} |\n",
                 f.severity,
                 f.category,
                 f.title,
-                f.file_path.as_deref().unwrap_or("—"),
+                f.file_path.as_deref().unwrap_or("-"),
             ));
         }
     }
@@ -395,7 +379,7 @@ fn build_deployment_note(runbook: &DeploymentRunbook) -> String {
     ));
     s.push_str("| # | Step | Type |\n|---|------|------|\n");
     for (i, step) in runbook.steps.iter().enumerate() {
-        let kind = if step.is_manual { "👤 Manual" } else { "⚙️ Automated" };
+        let kind = if step.is_manual { "manual" } else { "automated" };
         s.push_str(&format!("| {} | {} | {} |\n", i + 1, step.title, kind));
     }
     s.push_str("\n---\n\n## Required Environment Variables\n\n");
@@ -548,7 +532,7 @@ fn build_onboarding_note(scan: &ScanResult) -> String {
             line.push_str(if e.has_example {
                 " *(has example)*"
             } else {
-                " ⚠️ *no example provided*"
+                " *(no example provided)*"
             });
             line.push('\n');
             s.push_str(&line);

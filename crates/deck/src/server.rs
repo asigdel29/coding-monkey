@@ -546,14 +546,9 @@ async fn dispatch(
     owned: &mut Vec<String>,
     sender: &mut futures::stream::SplitSink<WebSocket, Message>,
 ) -> anyhow::Result<()> {
-    let send = |sender: &mut futures::stream::SplitSink<WebSocket, Message>,
-                payload: serde_json::Value| {
-        let text = payload.to_string();
-        async move { sender.send(Message::Text(text)).await }
-    };
     match msg {
         WsMsg::Auth { .. } | WsMsg::TentacleList => {
-            send(
+            send_json(
                 sender,
                 serde_json::json!({
                     "type": "tentacle.list",
@@ -566,7 +561,7 @@ async fn dispatch(
             let body = context.clone().unwrap_or_default();
             let t = state.tentacles.create(title, &body)?;
             audit(state, "tentacle.create", serde_json::json!({ "id": t.id, "title": t.title })).await;
-            send(
+            send_json(
                 sender,
                 serde_json::json!({
                     "type": "tentacle.created",
@@ -579,10 +574,10 @@ async fn dispatch(
         WsMsg::TentacleRemove { id } => {
             state.tentacles.remove(id)?;
             audit(state, "tentacle.remove", serde_json::json!({ "id": id })).await;
-            send(sender, serde_json::json!({ "type": "tentacle.removed", "id": id })).await?;
+            send_json(sender, serde_json::json!({ "type": "tentacle.removed", "id": id })).await?;
         }
         WsMsg::TentacleTodos { id } => {
-            send(
+            send_json(
                 sender,
                 serde_json::json!({
                     "type": "tentacle.todos",
@@ -595,7 +590,7 @@ async fn dispatch(
         WsMsg::TentacleToggle { id, line } => {
             let todos = state.tentacles.toggle_todo(id, *line);
             audit(state, "tentacle.toggle", serde_json::json!({ "id": id, "line": line })).await;
-            send(
+            send_json(
                 sender,
                 serde_json::json!({ "type": "tentacle.todos", "id": id, "todos": todos }),
             )
@@ -603,7 +598,7 @@ async fn dispatch(
         }
         WsMsg::TentacleContext { id } => {
             let content = state.tentacles.read_context(id);
-            send(
+            send_json(
                 sender,
                 serde_json::json!({ "type": "tentacle.context", "id": id, "content": content }),
             )
@@ -611,7 +606,7 @@ async fn dispatch(
         }
         WsMsg::TentacleWriteContext { id, content } => {
             state.tentacles.write_context(id, content)?;
-            send(
+            send_json(
                 sender,
                 serde_json::json!({ "type": "tentacle.context", "id": id, "content": content }),
             )
@@ -634,7 +629,7 @@ async fn dispatch(
             let result = match monkey_agents::spawn_agent(opts, |_chunk| {}) {
                 Ok(r) => r,
                 Err(err) => {
-                    send(
+                    send_json(
                         sender,
                         serde_json::json!({
                             "type": "term.error",
@@ -659,7 +654,7 @@ async fn dispatch(
             let id = result.terminal.id.clone();
             let binary = result.binary.clone();
             state.terminals.lock().await.insert(id.clone(), result.terminal);
-            send(
+            send_json(
                 sender,
                 serde_json::json!({
                     "type": "term.spawned",
@@ -694,6 +689,13 @@ async fn dispatch(
         }
     }
     Ok(())
+}
+
+async fn send_json(
+    sender: &mut futures::stream::SplitSink<WebSocket, Message>,
+    payload: serde_json::Value,
+) -> Result<(), axum::Error> {
+    sender.send(Message::Text(payload.to_string())).await
 }
 
 fn kind_label(msg: &WsMsg) -> &'static str {

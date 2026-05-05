@@ -23,5 +23,5 @@ pub async fn run() -> anyhow::Result<()> {
 }
 
 fn mark(ok: bool) -> &'static str {
-    if ok { "✓" } else { "✗" }
+    if ok { "[ok]  " } else { "[fail]" }
 }
