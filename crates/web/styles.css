@@ -1,0 +1,306 @@
+/*
+   File: crates/web/styles.css
+
+   Purpose
+   Deck UI styling. Forest-green theme matched to the monkey icon
+   (#0f5132 background; #c26b30 accents). Three-pane CSS grid with
+   sticky rails. Pixel icons preserve their crisp edges via
+   image-rendering: pixelated.
+
+   History
+   Date         Author          Changes
+   2026-05-05   Anubhav Sigdel  initial styles; monkey-themed palette
+*/
+
+:root {
+  --bg: #0b1f17;
+  --bg-elev: #0f2d22;
+  --bg-rail: #0a1a14;
+  --line: #1d4a37;
+  --text: #f8e2c5;
+  --text-dim: #a7bdb1;
+  --accent: #c26b30;
+  --accent-dark: #8b3a0e;
+  --ok: #98c379;
+  --warn: #e5c07b;
+  --err: #e06c75;
+  --pixel-monkey-bg: #0f5132;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.4 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+}
+
+body {
+  overflow: hidden;
+}
+
+.deck-root {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+}
+
+/* ─── Connection banner ─────────────────────────────────────── */
+
+.banner {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 14px;
+  border-radius: 0 0 8px 8px;
+  font-size: 12px;
+  z-index: 100;
+  pointer-events: none;
+}
+.banner-ok   { display: none; }                /* hide once connected */
+.banner-info { background: var(--line); color: var(--text); }
+.banner-warn { background: var(--warn); color: #2d2200; }
+.banner-err  { background: var(--err);  color: #fff; }
+
+/* ─── Header ─────────────────────────────────────────────────── */
+
+.deck-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-icon {
+  width: 40px;
+  height: 40px;
+  image-rendering: pixelated;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--pixel-monkey-bg);
+  display: grid;
+  place-items: stretch;
+}
+.brand-icon svg { display: block; }
+
+.brand-title {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.brand-cwd {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.btn {
+  font: inherit;
+  background: var(--bg-rail);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn:hover { background: var(--line); }
+.btn.primary {
+  background: var(--accent);
+  color: #1a0e02;
+  border-color: var(--accent-dark);
+  font-weight: 600;
+}
+.btn.primary:hover { background: var(--accent-dark); color: var(--text); }
+
+/* ─── Main grid ─────────────────────────────────────────────── */
+
+.deck-main {
+  display: grid;
+  grid-template-columns: 220px 1fr 320px;
+  height: 100%;
+  min-height: 0;
+}
+
+aside, section {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+}
+.right-rail { border-right: none; border-left: 1px solid var(--line); }
+
+.left-rail, .right-rail {
+  background: var(--bg-rail);
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.rail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin: 12px 0 6px;
+}
+.rail-head:first-child { margin-top: 0; }
+
+/* ─── Left rail: tentacles ──────────────────────────────────── */
+
+.tentacle-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tentacle-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+}
+.tentacle-list li:hover { background: var(--bg-elev); }
+.tentacle-list li.active {
+  background: var(--bg-elev);
+  border-color: var(--accent);
+}
+.tent-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  image-rendering: pixelated;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--pixel-monkey-bg);
+  display: block;
+}
+.tent-icon svg { display: block; }
+.tent-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── Center: tabs + terminals ─────────────────────────────── */
+
+.center-pane {
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-strip {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px 0;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--bg-rail);
+  color: var(--text-dim);
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.tab.active {
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--accent);
+}
+.tab-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  image-rendering: pixelated;
+  background: var(--pixel-monkey-bg);
+  border-radius: 2px;
+}
+.tab-icon svg { display: block; }
+
+.terminal-host {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+.term-pane {
+  position: absolute;
+  inset: 0;
+  padding: 8px;
+}
+
+/* ─── Right rail: context + todo ───────────────────────────── */
+
+.ctx-editor {
+  flex: 0 0 35vh;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px;
+  resize: none;
+  font: inherit;
+  font-size: 12px;
+}
+.ctx-editor:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+
+.todo-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.todo-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.todo-list li.done {
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
+.todo-list input[type=checkbox] {
+  accent-color: var(--accent);
+}
+
+/* ─── Scrollbars ────────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-dark); }

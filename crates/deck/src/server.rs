@@ -76,6 +76,11 @@ pub struct DeckOpts {
     pub key: Option<PathBuf>,
     /// Refuse to bind off-loopback without TLS.
     pub enforce_tls_off_loopback: bool,
+    /// Static-asset directory served from `/static/*`. The
+    /// monkey-web WASM bundle lives here (typically the result of
+    /// `trunk build` against crates/web). When `None`, /static returns
+    /// 404 — useful in tests.
+    pub static_dir: Option<PathBuf>,
 }
 
 impl Default for DeckOpts {
@@ -93,6 +98,7 @@ impl Default for DeckOpts {
             cert: None,
             key: None,
             enforce_tls_off_loopback: true,
+            static_dir: None,
         }
     }
 }
@@ -222,11 +228,17 @@ pub async fn start_deck(opts: DeckOpts) -> anyhow::Result<DeckHandle> {
         terminals: Mutex::new(HashMap::new()),
     });
 
-    let app = Router::new()
+    let mut app = Router::new()
         .route("/", get(serve_index))
         .route("/healthz", get(serve_health))
         .route("/ws", get(ws_upgrade))
         .with_state(state.clone());
+    if let Some(dir) = opts.static_dir.as_ref() {
+        app = app.nest_service(
+            "/static",
+            tower_http::services::fs::ServeDir::new(dir),
+        );
+    }
 
     let bind: SocketAddr = format!("{host}:{}", opts.port)
         .parse()
@@ -342,18 +354,30 @@ fn apply_security_headers(headers: &mut HeaderMap, state: &AppState) {
     }
 }
 
-fn index_html(token: &str) -> String {
-    // Minimal placeholder. The real WASM frontend lives in crates/web
-    // and is served as static assets in a follow-up commit.
-    format!(
-        "<!doctype html><html><head><meta charset=utf-8><title>monkey deck</title>\
-         <meta name=viewport content=\"width=device-width\"></head>\
-         <body><h1>monkey deck</h1>\
-         <p>WebSocket: <code>ws://HOST/ws?t={token}</code></p>\
-         <p>This page is served by the Rust deck server. The WASM \
-         frontend (crates/web) plugs in here in a follow-up commit.</p>\
-         </body></html>"
-    )
+fn index_html(_token: &str) -> String {
+    // Boot the leptos/WASM frontend served from /static/. The actual
+    // WASM bundle is built by `wasm-pack build crates/web` (or
+    // `trunk build`) and copied/symlinked into the deck's static dir
+    // by the deploy step.
+    r##"<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>monkey deck</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  </head>
+  <body>
+    <script type="module">
+      import init from "/static/pkg/monkey_web.js";
+      init();
+    </script>
+  </body>
+</html>"##
+        .to_string()
 }
 
 // ─── WebSocket ──────────────────────────────────────────────────────────────

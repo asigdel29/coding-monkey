@@ -7,16 +7,20 @@
    or `trunk serve`. Talks to the deck server via WebSocket.
 
    The xterm.js terminal widget is rendered into a <div> via wasm-bindgen
-   JS interop (see `xterm.rs`).
+   JS interop (see `xterm.rs`). Each tentacle in the left rail and each
+   terminal tab is decorated with the pixel-monkey icon (icon.rs)
+   replacing the octogent octopus mark.
 
    Build (from this directory):
        trunk serve
    or
-       wasm-pack build --target web --release && cp index.html pkg/
+       wasm-pack build --target web --release
 
    History
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  initial scaffold; leptos shell + WS plumbing
+   2026-05-05   Anubhav Sigdel  full WS client + xterm mount + monkey
+                                 pixel icons; three-pane layout wired
 */
 
 #![deny(unsafe_code)]
@@ -25,10 +29,12 @@
 //! `monkey-web` — leptos CSR frontend for the deck dashboard.
 
 mod app;
+mod icon;
 mod ws;
 mod xterm;
 
 pub use app::App;
+pub use icon::{MONKEY_SVG_16, MONKEY_SVG_32};
 
 use wasm_bindgen::prelude::*;
 

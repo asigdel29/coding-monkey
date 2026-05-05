@@ -33,6 +33,10 @@ pub struct Args {
     pub key: Option<PathBuf>,
     #[arg(long = "insecure-no-tls", default_value_t = false)]
     pub insecure_no_tls: bool,
+    /// Static asset directory served from `/static/*`. The WASM
+    /// bundle (crates/web/dist) goes here so the leptos UI can boot.
+    #[arg(long = "static-dir")]
+    pub static_dir: Option<PathBuf>,
 }
 
 pub async fn run(args: Args) -> anyhow::Result<()> {
@@ -47,6 +51,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         cert: args.cert,
         key: args.key,
         enforce_tls_off_loopback: !args.insecure_no_tls,
+        static_dir: args.static_dir,
     };
     let handle = start_deck(opts).await?;
     eprintln!("🐙 deck listening on {}", handle.url);

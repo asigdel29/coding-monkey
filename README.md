@@ -112,7 +112,9 @@ crates/
  * @purpose    Web frontend server. axum HTTP+WS. Refuses to bind off-loopback
  *             without TLS unless --insecure-no-tls. Tentacles persisted as
  *             folders in .monkey/tentacles/<id>/. Each terminal tab is a
- *             portable-pty spawn of the configured agent.
+ *             portable-pty spawn of the configured agent. Each tentacle and
+ *             tab is decorated with the pixel-monkey icon (replaces the
+ *             octogent octopus from the TS reference).
  * @invariant  WS messages rate-limited (default 100/s/connection).
  * @invariant  Sessions expire (default 8h TTL).
 **/
@@ -309,7 +311,7 @@ trunk serve crates/web/index.html
 | `monkey-skills`          | scaffolded (Skill trait + registry)   |
 | `monkey-deck`            | scaffolded (DeckOpts + tentacles read/write) |
 | `monkey-cli`             | scaffolded (full subcommand surface, dispatchers wired) |
-| `monkey-web`             | scaffolded (leptos shell + xterm interop + WS schemas) |
+| `monkey-web`             | leptos CSR shell ✅ + monkey pixel-icon UI + xterm.js mount + WS auto-reconnect |
 
 Subsequent commits port crate-by-crate to full parity with the TS reference.
 
