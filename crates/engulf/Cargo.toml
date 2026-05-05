@@ -1,0 +1,31 @@
+[package]
+name = "monkey-engulf"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Deep-learn pipeline: scan, security audit, deploy runbook, Obsidian vault"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+monkey-core = { path = "../core" }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+walkdir.workspace = true
+ignore.workspace = true
+regex.workspace = true
+once_cell.workspace = true
+reqwest.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+pretty_assertions.workspace = true

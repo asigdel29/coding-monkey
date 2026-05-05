@@ -1,0 +1,28 @@
+[package]
+name = "monkey-skills"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Production skills: review, investigate, cso, ship — composable gates"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+monkey-core = { path = "../core" }
+monkey-engulf = { path = "../engulf" }
+monkey-pentest-agent = { path = "../pentest-agent" }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+pretty_assertions.workspace = true
