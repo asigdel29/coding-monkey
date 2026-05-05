@@ -25,4 +25,6 @@ pub mod schemas;
 pub mod server;
 pub mod tentacles;
 
+pub use schemas::{parse_ws_msg, WsMsg};
 pub use server::{start_deck, DeckHandle, DeckOpts};
+pub use tentacles::{slug, Tentacle, TentacleStore, TodoItem};
