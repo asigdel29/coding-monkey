@@ -278,6 +278,7 @@ impl Skill for Ship {
                 target: input.pentest_target.clone(),
                 cwd: Some(cwd.clone()),
                 fail_on: severity_to_pentest(Severity::from_threshold(&input.fail_on)),
+                ..Default::default()
             };
             match monkey_pentest_agent::run_pre_push_pentest(opts).await {
                 Ok(r) => {
