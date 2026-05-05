@@ -184,14 +184,16 @@ pub fn App() -> impl IntoView {
         });
     };
 
+    // Wrap the toggle action in leptos::Callback so the For-children
+    // closure can clone it once per row.
     let client_toggle = client.clone();
-    let toggle_todo = move |line: u32| {
+    let toggle_todo: Callback<u32> = Callback::new(move |line: u32| {
         let id = active_id.get_untracked();
         if id.is_empty() {
             return;
         }
         client_toggle.send(&ClientMsg::TentacleToggle { id, line });
-    };
+    });
 
     // ── Render ─────────────────────────────────────────────────────────────
     view! {
@@ -286,13 +288,13 @@ pub fn App() -> impl IntoView {
                             key=|t| t.line
                             children=move |t| {
                                 let line = t.line;
-                                let on_toggle = toggle_todo.clone();
+                                let on_toggle = toggle_todo;
                                 view! {
                                     <li class:done=t.done>
                                         <input
                                             type="checkbox"
                                             prop:checked=t.done
-                                            on:change=move |_| on_toggle(line)
+                                            on:change=move |_| on_toggle.run(line)
                                         />
                                         <span>{t.text}</span>
                                     </li>

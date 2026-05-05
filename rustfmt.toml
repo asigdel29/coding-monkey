@@ -1,0 +1,19 @@
+# File: rustfmt.toml
+#
+# Workspace-wide formatting rules. Stable rustfmt only — no nightly
+# options so `cargo fmt --check` works on stable CI.
+#
+# History
+# 2026-05-05  Anubhav Sigdel  initial gauntlet — stable rustfmt config
+
+edition = "2021"
+max_width = 100
+hard_tabs = false
+tab_spaces = 4
+newline_style = "Unix"
+use_small_heuristics = "Default"
+reorder_imports = true
+reorder_modules = true
+remove_nested_parens = true
+match_block_trailing_comma = false
+fn_args_layout = "Tall"

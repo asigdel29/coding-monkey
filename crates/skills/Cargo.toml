@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Production skills: review, investigate, cso, ship — composable gates"
+description = "Skills: review, investigate, cso, ship — composable gates"
 
 [lib]
 path = "src/lib.rs"

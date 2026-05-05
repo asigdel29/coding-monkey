@@ -5,17 +5,107 @@ on:
     branches: [main]
   pull_request:
 
+# Cancel an older run on the same branch when a new push lands.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  RUST_BACKTRACE: short
+
 jobs:
-  build:
+  fmt:
+    name: rustfmt
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+          components: rustfmt
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo build --workspace --all-targets
-      - run: cargo test --workspace --all-targets
+
+  clippy:
+    name: clippy (--all-targets, -D warnings)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  build-and-test:
+    name: build + test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace --all-targets --locked
+      - run: cargo test --workspace --all-targets --locked
+
+  doc:
+    name: rustdoc (deny broken intra-doc links)
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings -D rustdoc::broken-intra-doc-links
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Skip the WASM crate — rustdoc can't resolve js-sys / wasm-bindgen
+      # without the wasm32 target, which doc gen doesn't have here.
+      - run: cargo doc --workspace --no-deps --exclude monkey-web
+
+  msrv:
+    name: MSRV (rust-toolchain.toml)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.84
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace --all-targets --locked
+
+  wasm-build:
+    name: wasm32 build (monkey-web)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p monkey-web --target wasm32-unknown-unknown --locked
+
+  cli-smoke:
+    name: cli smoke (monkey --help, monkey init)
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p monkey-cli --release --locked
+      - name: --help
+        run: ./target/release/monkey --help
+      - name: init in tempdir
+        run: |
+          tmp=$(mktemp -d)
+          ./target/release/monkey init "$tmp"
+          test -f "$tmp/.monkey/config.json"
+          test -f "$tmp/.monkey/context/CLAUDE.md"
+          test -f "$tmp/.monkey/tentacles/main/todo.md"
+      - name: doctor (non-blocking — env not configured)
+        run: ./target/release/monkey doctor || true
+      - name: models lists registered providers
+        run: |
+          ./target/release/monkey models | tee /tmp/models.txt
+          grep -q "Claude" /tmp/models.txt
+          grep -q "GPT" /tmp/models.txt

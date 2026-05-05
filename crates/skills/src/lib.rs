@@ -2,7 +2,7 @@
    File: crates/skills/src/lib.rs
 
    Purpose
-   Production gstack-equivalent skills:
+   Composable gstack-equivalent skills:
        review       — multi-model pre-merge diff review
        investigate  — four-phase root-cause debugging w/ tier escalation
        cso          — security audit composer

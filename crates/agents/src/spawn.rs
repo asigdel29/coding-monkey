@@ -164,22 +164,26 @@ where
         child,
     }));
 
-    // 6. Reader thread — pumps PTY → on_data callback. Keeps a clone of
-    //    the master via the Arc so the lifetime is correct.
+    // 6. Reader thread — pumps PTY → on_data callback. Clone the
+    //    reader exactly once outside the read loop so we don't lose
+    //    bytes between iterations.
     {
         let inner = Arc::clone(&inner);
         thread::Builder::new()
             .name("monkey-agent-reader".into())
             .spawn(move || {
-                let mut buf = [0u8; 4096];
-                loop {
-                    let mut reader = match inner.lock() {
-                        Ok(g) => match g.master.try_clone_reader() {
-                            Ok(r) => r,
-                            Err(_) => return,
-                        },
+                let mut reader = {
+                    let g = match inner.lock() {
+                        Ok(g) => g,
                         Err(_) => return,
                     };
+                    match g.master.try_clone_reader() {
+                        Ok(r) => r,
+                        Err(_) => return,
+                    }
+                };
+                let mut buf = [0u8; 4096];
+                loop {
                     match reader.read(&mut buf) {
                         Ok(0) => return,
                         Ok(n) => on_data(&buf[..n]),

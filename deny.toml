@@ -1,0 +1,53 @@
+# File: deny.toml
+#
+# cargo-deny configuration: license, advisory, and source policies.
+# Run via `cargo deny check` locally and on CI (security workflow).
+#
+# History
+# 2026-05-05  Anubhav Sigdel  initial gauntlet
+
+[graph]
+all-features = true
+
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "warn"
+ignore = []
+
+[licenses]
+# Allowlist the licenses we accept. New deps that aren't on this list
+# fail CI loudly, forcing an explicit decision instead of silent
+# license drift.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "Zlib",
+    "MPL-2.0",
+    "CC0-1.0",
+    "0BSD",
+]
+confidence-threshold = 0.93
+exceptions = []
+
+[bans]
+# Catch accidental duplicate versions of the same crate after a Cargo
+# update — they bloat the binary and slow builds.
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "warn"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
