@@ -1,0 +1,46 @@
+/*
+   File: crates/agents/src/lib.rs
+
+   Purpose
+   The "spawn an agent" primitive. Five responsibilities, all preserved
+   from the TS port:
+
+     1. assemble_context — read .monkey/context/*.md + active tentacle's
+        CONTEXT.md + todo.md, cap at 32 KB, surface truncation.
+     2. redact          — scrub secrets from agent stdout before logging.
+     3. AuditLog        — append-only, hash-chained .monkey/sessions/audit-*.log.
+     4. doctor          — check claude/codex CLIs are on PATH.
+     5. spawn_agent     — PTY-spawn the chosen CLI with the assembled prompt.
+
+   Invariants
+   - Missing context files are skipped silently.
+   - Files larger than `MAX_FILE_BYTES` are trimmed and surfaced via
+     `AssembledContext.truncated_files`.
+   - Every audit-log line embeds `sha256(prev_line)`; verification walks
+     the chain end-to-end.
+
+   History
+   Date         Author          Changes
+   2026-05-05   Anubhav Sigdel  initial Rust port from packages/agents/src/
+*/
+
+#![deny(missing_debug_implementations)]
+#![deny(unsafe_code)]
+#![warn(missing_docs)]
+
+//! `monkey-agents` — spawn agent CLIs with assembled context, redaction, and
+//! tamper-evident audit logging.
+
+pub mod audit;
+pub mod context;
+pub mod doctor;
+pub mod redact;
+pub mod spawn;
+pub mod types;
+
+pub use audit::{AuditEntry, AuditEventType, AuditLogger, verify_audit_log};
+pub use context::{assemble_context, AssembledContext};
+pub use doctor::{doctor, pick_auto, DoctorReport};
+pub use redact::{redact, redact_object};
+pub use spawn::{spawn_agent, AgentTerminal, SpawnResult};
+pub use types::{AgentKind, SpawnOpts};

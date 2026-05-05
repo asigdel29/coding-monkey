@@ -1,0 +1,5 @@
+# Pin the Rust toolchain for reproducible builds.
+[toolchain]
+channel = "1.84"
+components = ["rustfmt", "clippy"]
+profile = "default"

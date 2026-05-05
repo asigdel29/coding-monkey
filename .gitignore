@@ -1,0 +1,31 @@
+# coding-monkey — workspace root ignore
+
+/target/
+**/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# WASM build output
+crates/web/dist/
+crates/web/pkg/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Env
+.env
+.env.local
+*.pem
+*.key
+
+# Coverage
+*.profraw
+tarpaulin-report.html
+lcov.info
+
+# Per-project monkey output
+.monkey/sessions/
+.monkey/vault/
+.monkey/reports/
