@@ -27,6 +27,7 @@
 //! Obsidian vault writer.
 
 pub mod deployer;
+pub mod llm;
 pub mod prompts;
 pub mod scanner;
 pub mod security;
@@ -39,6 +40,10 @@ pub use scanner::{
     APIRoute, CIConfig, CIType, CodebaseScanner, DepKind, DepSource, DependencyInfo, EnvVarInfo,
     FileInfo, GitInfo, HintSeverity, ScanResult, SchemaInfo, SchemaKind, SecurityHint,
     TechStackInfo,
+};
+pub use security::{
+    audit as run_security_audit, audit_with as run_security_audit_with, AuditOptions,
+    SecurityAuditResult, SecurityFinding, Severity,
 };
 
 /// User-facing config for [`run_engulf`].
@@ -97,6 +102,7 @@ pub async fn run_engulf(config: EngulfConfig) -> anyhow::Result<EngulfSummary> {
 
     let mut summary = EngulfSummary::default();
     let mut scan_result: Option<ScanResult> = None;
+    let mut audit_result: Option<SecurityAuditResult> = None;
 
     for phase in phases {
         match phase {
@@ -112,12 +118,31 @@ pub async fn run_engulf(config: EngulfConfig) -> anyhow::Result<EngulfSummary> {
                 summary.phases_completed.push(Phase::Scan);
             }
             Phase::Security => {
-                if let Some(scan) = scan_result.as_ref() {
-                    let _ = security::audit(scan).await?;
-                    summary.phases_skipped.push((Phase::Security, "audit module is a stub".into()));
-                } else {
-                    summary.phases_skipped.push((Phase::Security, "no scan result available".into()));
+                let Some(scan) = scan_result.as_ref() else {
+                    summary
+                        .phases_skipped
+                        .push((Phase::Security, "no scan result available".into()));
+                    continue;
+                };
+                let opts = AuditOptions {
+                    provider: Some(config.provider),
+                    skip_llm: false,
+                    ..Default::default()
+                };
+                let r = security::audit_with(scan, opts).await?;
+                tracing::info!(
+                    findings = r.findings.len(),
+                    critical = r.critical_count,
+                    high = r.high_count,
+                    "security audit complete"
+                );
+                if let Some(out) = output_path_for(&config, &target) {
+                    let path = out.join("context").join("SECURITY.md");
+                    write_file(&path, &r.markdown)?;
+                    summary.files_written.push(path);
                 }
+                audit_result = Some(r);
+                summary.phases_completed.push(Phase::Security);
             }
             Phase::Docs => {
                 summary.phases_skipped.push((Phase::Docs, "docs phase port pending".into()));
@@ -130,7 +155,24 @@ pub async fn run_engulf(config: EngulfConfig) -> anyhow::Result<EngulfSummary> {
             }
         }
     }
+    let _ = audit_result; // reserved for the docs/vault phases.
     Ok(summary)
+}
+
+fn output_path_for(config: &EngulfConfig, target: &std::path::Path) -> Option<PathBuf> {
+    Some(
+        config
+            .output_path
+            .clone()
+            .unwrap_or_else(|| target.join(".monkey")),
+    )
+}
+
+fn write_file(path: &std::path::Path, body: &str) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, body)
 }
 
 /// What [`run_engulf`] returns. Used by the CLI to render a final report.
