@@ -22,11 +22,14 @@ package coding-monkey;
 
 # coding-monkey
 
-> Native-Rust port of [`anu`](https://github.com/asigdel29/anu) — a drop-in
-> coding agent for any repo. Same five features (drop-in agent context,
-> deep-learn, parallel terminals, multi-repo orchestrator, mandatory pentest
-> gate), rebuilt for low-latency, predictable resource use, and single-binary
-> deployment.
+> A Rust implementation of an internal coding agent I use at work.
+>
+> Single-binary `monkey` CLI: drop into any repo, get a committed
+> `.monkey/context/` directory that every spawned agent reads as a system
+> prompt, a deep-learn pipeline that scans the codebase and writes the
+> context for you, a web dashboard for parallel agent terminals, a
+> multi-repo orchestrator, and a mandatory pre-push pentest gate — all in
+> native Rust with no runtime, no GC, no Node.
 
 ```bash
 cargo install --path crates/cli           # builds the `monkey` binary
