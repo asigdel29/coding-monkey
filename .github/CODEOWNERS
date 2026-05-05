@@ -1,0 +1,6 @@
+# Workspace-wide ownership. Every PR auto-requests review from these
+# owners; CI's required-reviews check then enforces approval.
+
+*           @asigdel29
+/.github/   @asigdel29
+/crates/    @asigdel29

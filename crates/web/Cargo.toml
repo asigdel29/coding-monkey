@@ -27,7 +27,9 @@ serde_json.workspace = true
 js-sys = "0.3"
 web-sys = { version = "0.3", features = [
     "WebSocket", "BinaryType", "MessageEvent", "CloseEvent", "ErrorEvent",
-    "Element", "HtmlElement", "Document", "Window",
+    "Element", "HtmlElement", "HtmlTextAreaElement", "HtmlInputElement",
+    "Document", "Window", "Location", "Event", "MouseEvent", "InputEvent",
+    "console",
 ] }
 gloo = { version = "0.11", features = ["net"] }
 gloo-net = "0.6"

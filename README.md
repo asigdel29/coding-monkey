@@ -1,7 +1,7 @@
 ```
 /*
    File: README.md
-   Project: coding-monkey — production AI agent platform in Rust
+   Project: coding-monkey — AI agent platform in Rust
 
    History
    Date         Author          Changes

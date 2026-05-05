@@ -1,0 +1,22 @@
+# File: clippy.toml
+#
+# Crate-wide clippy thresholds. Lint families are configured per-crate
+# via #![warn(...)]; this file only carries the thresholds that have to
+# be set globally.
+#
+# History
+# 2026-05-05  Anubhav Sigdel  initial gauntlet
+
+# Functions over this cyclomatic complexity get flagged.
+cognitive-complexity-threshold = 30
+
+# Refuse to silently expand single chars to format strings.
+single-char-binding-names-threshold = 4
+
+# Allow log!/print! macros — we use tracing::* for everything anyway,
+# but build scripts and tests legitimately call eprintln!.
+allow-print-in-tests = true
+
+# MSRV — keep in sync with rust-toolchain.toml so clippy warnings
+# don't fire on syntax not yet stable in 1.84.
+msrv = "1.84"
