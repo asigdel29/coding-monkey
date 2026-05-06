@@ -68,6 +68,11 @@ exceptions = []
 # update — they bloat the binary and slow builds.
 multiple-versions = "warn"
 wildcards = "deny"
+# Workspace-internal `path = "../foo"` deps look like wildcards to
+# cargo-deny because they have no version constraint. They aren't —
+# they're sibling crates we control. This flag exempts them while
+# still blocking real wildcard ("*") version reqs from crates.io.
+allow-wildcard-paths = true
 highlight = "all"
 deny = []
 skip = []
