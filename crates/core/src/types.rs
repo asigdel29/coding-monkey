@@ -186,9 +186,15 @@ pub struct OrchestratorConfig {
 /// String form of [`crate::models::ModelTier`] for config serialization.
 pub type ModelTierStr = String;
 
-fn default_agent() -> String { "auto".into() }
-fn default_tier() -> ModelTierStr { "balanced".into() }
-fn default_fail_on() -> String { "high".into() }
+fn default_agent() -> String {
+    "auto".into()
+}
+fn default_tier() -> ModelTierStr {
+    "balanced".into()
+}
+fn default_fail_on() -> String {
+    "high".into()
+}
 
 impl Default for OrchestratorConfig {
     fn default() -> Self {
@@ -224,8 +230,17 @@ mod tests {
 
     #[test]
     fn token_usage_merge_is_pure() {
-        let a = TokenUsage { input_tokens: 100, total_tokens: 100, ..Default::default() };
-        let b = TokenUsage { output_tokens: 50, total_tokens: 50, estimated_cost_usd: 0.001, ..Default::default() };
+        let a = TokenUsage {
+            input_tokens: 100,
+            total_tokens: 100,
+            ..Default::default()
+        };
+        let b = TokenUsage {
+            output_tokens: 50,
+            total_tokens: 50,
+            estimated_cost_usd: 0.001,
+            ..Default::default()
+        };
         let merged = TokenUsage::merge(&a, &b);
         assert_eq!(merged.input_tokens, 100);
         assert_eq!(merged.output_tokens, 50);

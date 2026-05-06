@@ -74,7 +74,9 @@ impl ModelRegistry {
     /// Empty registry. Use [`with_builtin`](Self::with_builtin) for the
     /// production set.
     pub fn empty() -> Self {
-        Self { by_id: HashMap::new() }
+        Self {
+            by_id: HashMap::new(),
+        }
     }
 
     /// Registry pre-populated with the production model lineup. Update
@@ -129,7 +131,10 @@ pub struct ModelSelector<'a> {
 impl<'a> ModelSelector<'a> {
     /// New selector backed by `registry`. No provider preference by default.
     pub fn new(registry: &'a ModelRegistry) -> Self {
-        Self { registry, preferred_provider: None }
+        Self {
+            registry,
+            preferred_provider: None,
+        }
     }
 
     /// Pin the selector to a single provider. Useful when only one API
@@ -176,10 +181,9 @@ pub fn tier_for_task(t: TaskType) -> ModelTier {
     match t {
         TaskType::Chat | TaskType::Explain => ModelTier::Fast,
         TaskType::Edit | TaskType::Generate | TaskType::Engulf => ModelTier::Balanced,
-        TaskType::Refactor
-        | TaskType::Investigate
-        | TaskType::Review
-        | TaskType::SecurityAudit => ModelTier::Powerful,
+        TaskType::Refactor | TaskType::Investigate | TaskType::Review | TaskType::SecurityAudit => {
+            ModelTier::Powerful
+        }
     }
 }
 

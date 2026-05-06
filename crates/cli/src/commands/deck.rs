@@ -41,7 +41,9 @@ pub struct Args {
 
 pub async fn run(args: Args) -> anyhow::Result<()> {
     let opts = DeckOpts {
-        cwd: args.cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into())),
+        cwd: args
+            .cwd
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into())),
         host: args.host,
         port: args.port,
         agent: args.agent,

@@ -48,7 +48,9 @@ pub struct AgentTerminal {
 
 impl std::fmt::Debug for AgentTerminal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AgentTerminal").field("id", &self.id).finish()
+        f.debug_struct("AgentTerminal")
+            .field("id", &self.id)
+            .finish()
     }
 }
 
@@ -84,7 +86,7 @@ impl AgentTerminal {
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .map_err(|e| anyhow!("resize failed: {}", e))
+            .map_err(|e| anyhow!("resize failed: {e}"))
     }
 
     /// Send SIGKILL (or platform equivalent) to the child.
@@ -119,8 +121,7 @@ where
         return Err(anyhow!("doctor failed: {notes}"));
     }
     let kind = match opts.kind {
-        AgentKind::Auto => pick_auto(&report)
-            .ok_or_else(|| anyhow!("no agent CLI available"))?,
+        AgentKind::Auto => pick_auto(&report).ok_or_else(|| anyhow!("no agent CLI available"))?,
         explicit => explicit,
     };
     let binary = match kind {
@@ -142,7 +143,7 @@ where
             pixel_width: 0,
             pixel_height: 0,
         })
-        .map_err(|e| anyhow!("openpty failed: {}", e))?;
+        .map_err(|e| anyhow!("openpty failed: {e}"))?;
 
     // 4. Build the child command.
     let mut cmd = CommandBuilder::new(binary);
@@ -154,13 +155,13 @@ where
     let child = pair
         .slave
         .spawn_command(cmd)
-        .map_err(|e| anyhow!("spawn {binary} failed: {}", e))?;
+        .map_err(|e| anyhow!("spawn {binary} failed: {e}"))?;
     drop(pair.slave); // close our copy of the slave
 
     let mut writer = pair
         .master
         .take_writer()
-        .map_err(|e| anyhow!("take_writer failed: {}", e))?;
+        .map_err(|e| anyhow!("take_writer failed: {e}"))?;
 
     // 5. Pipe the assembled prompt as the first stdin chunk so the agent
     //    sees it as its initial system context.

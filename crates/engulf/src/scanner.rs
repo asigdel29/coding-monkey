@@ -85,7 +85,8 @@ pub struct FileInfo {
     pub size_bytes: u64,
     /// Lowercased extension including the dot, or empty.
     pub extension: String,
-    /// Whether the basename appears in [`CONFIG_FILES`].
+    /// Whether the basename matches a recognized project config file
+    /// (e.g. `package.json`, `Cargo.toml`, `Dockerfile`, `.env`).
     pub is_config: bool,
 }
 
@@ -267,9 +268,23 @@ pub struct SecurityHint {
 
 static SKIP_DIRS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     [
-        "node_modules", ".git", "dist", "build", ".next", "__pycache__",
-        "target", ".cache", ".turbo", "coverage", ".nyc_output", "venv",
-        ".venv", "env", ".env", "vendor", "bower_components",
+        "node_modules",
+        ".git",
+        "dist",
+        "build",
+        ".next",
+        "__pycache__",
+        "target",
+        ".cache",
+        ".turbo",
+        "coverage",
+        ".nyc_output",
+        "venv",
+        ".venv",
+        "env",
+        ".env",
+        "vendor",
+        "bower_components",
     ]
     .into_iter()
     .collect()
@@ -277,10 +292,26 @@ static SKIP_DIRS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
 
 static CONFIG_FILES: Lazy<HashSet<&'static str>> = Lazy::new(|| {
     [
-        "package.json", "tsconfig.json", "vite.config.ts", "next.config.js",
-        "next.config.ts", "vercel.json", "fly.toml", "railway.toml",
-        "docker-compose.yml", "Dockerfile", ".env.example", "pyproject.toml",
-        "Cargo.toml", "go.mod", "Makefile", "justfile",
+        "package.json",
+        "tsconfig.json",
+        "vite.config.ts",
+        "next.config.js",
+        "next.config.ts",
+        "vercel.json",
+        "fly.toml",
+        "railway.toml",
+        "docker-compose.yml",
+        "Dockerfile",
+        // `.env` is intentionally listed alongside `.env.example`: the
+        // hidden-file filter would drop it otherwise, and we need it
+        // visible to the committed-secret hint.
+        ".env",
+        ".env.example",
+        "pyproject.toml",
+        "Cargo.toml",
+        "go.mod",
+        "Makefile",
+        "justfile",
     ]
     .into_iter()
     .collect()
@@ -345,6 +376,7 @@ impl CodebaseScanner {
         out
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn collect_files_into(&self, dir: &Path, base: &str, out: &mut Vec<FileInfo>) {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;
@@ -352,21 +384,26 @@ impl CodebaseScanner {
         for entry in entries.flatten() {
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
-            if SKIP_DIRS.contains(name_str.as_ref()) {
+            let abs = entry.path();
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            // SKIP_DIRS only applies to directories — a *file* called
+            // `.env` must reach the security-hint pass so committed
+            // secrets are surfaced, not silently dropped because some
+            // virtualenv directories share the same name.
+            if file_type.is_dir() && SKIP_DIRS.contains(name_str.as_ref()) {
                 continue;
             }
-            // Hidden entries, except for known config files.
+            // Hidden entries that aren't known config files are skipped,
+            // for both files and directories.
             if name_str.starts_with('.') && !CONFIG_FILES.contains(name_str.as_ref()) {
                 continue;
             }
             let rel = if base.is_empty() {
                 name_str.to_string()
             } else {
-                format!("{}/{}", base, name_str)
-            };
-            let abs = entry.path();
-            let Ok(file_type) = entry.file_type() else {
-                continue;
+                format!("{base}/{name_str}")
             };
             if file_type.is_dir() {
                 self.collect_files_into(&abs, &rel, out);
@@ -462,23 +499,22 @@ impl CodebaseScanner {
             None
         };
 
-        let deploy_target = if has("vercel.json")
-            || files.iter().any(|f| f.relative_path.contains(".vercel"))
-        {
-            Some("Vercel".into())
-        } else if has("fly.toml") {
-            Some("Fly.io".into())
-        } else if has("railway.toml") || has("railway.json") {
-            Some("Railway".into())
-        } else if has("Dockerfile") {
-            Some("Docker".into())
-        } else if has("netlify.toml") || has("netlify.json") {
-            Some("Netlify".into())
-        } else if has("Procfile") {
-            Some("Heroku".into())
-        } else {
-            None
-        };
+        let deploy_target =
+            if has("vercel.json") || files.iter().any(|f| f.relative_path.contains(".vercel")) {
+                Some("Vercel".into())
+            } else if has("fly.toml") {
+                Some("Fly.io".into())
+            } else if has("railway.toml") || has("railway.json") {
+                Some("Railway".into())
+            } else if has("Dockerfile") {
+                Some("Docker".into())
+            } else if has("netlify.toml") || has("netlify.json") {
+                Some("Netlify".into())
+            } else if has("Procfile") {
+                Some("Heroku".into())
+            } else {
+                None
+            };
 
         let test_framework = if has("vitest.config.ts") || has("vitest.config.js") {
             Some("Vitest".into())
@@ -573,9 +609,8 @@ impl CodebaseScanner {
         // Use a permissive section-and-key extraction so we don't need
         // a real TOML parser pulled in just for this. Match keys under
         // [dependencies] up to the next [section].
-        static DEPS_SECTION: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r"(?s)\[dependencies\]\n(.*?)(\n\[|\z)").expect("re")
-        });
+        static DEPS_SECTION: Lazy<Regex> =
+            Lazy::new(|| Regex::new(r"(?s)\[dependencies\]\n(.*?)(\n\[|\z)").expect("re"));
         static DEP_KEY: Lazy<Regex> =
             Lazy::new(|| Regex::new(r"(?m)^([A-Za-z][A-Za-z0-9_\-]*)\s*=").expect("re"));
 
@@ -598,13 +633,11 @@ impl CodebaseScanner {
         let mut by_name: HashMap<String, EnvVarInfo> = HashMap::new();
 
         // From .env.example or .env.sample.
-        let example = files.iter().find(|f| {
-            f.relative_path == ".env.example" || f.relative_path == ".env.sample"
-        });
+        let example = files
+            .iter()
+            .find(|f| f.relative_path == ".env.example" || f.relative_path == ".env.sample");
         if let Some(file) = example {
-            if let Ok(raw) =
-                std::fs::read_to_string(self.root_path.join(&file.relative_path))
-            {
+            if let Ok(raw) = std::fs::read_to_string(self.root_path.join(&file.relative_path)) {
                 static EXAMPLE_RE: Lazy<Regex> =
                     Lazy::new(|| Regex::new(r"^([A-Z][A-Z0-9_]+)\s*=").expect("re"));
                 for line in raw.lines() {
@@ -615,14 +648,12 @@ impl CodebaseScanner {
                             .split_once('#')
                             .map(|(_, rest)| rest.trim().to_string())
                             .filter(|s| !s.is_empty());
-                        by_name
-                            .entry(name.clone())
-                            .or_insert(EnvVarInfo {
-                                name,
-                                has_example: true,
-                                found_in_code: false,
-                                description,
-                            });
+                        by_name.entry(name.clone()).or_insert(EnvVarInfo {
+                            name,
+                            has_example: true,
+                            found_in_code: false,
+                            description,
+                        });
                     }
                 }
             }
@@ -636,20 +667,23 @@ impl CodebaseScanner {
         let code_files: Vec<&FileInfo> = files
             .iter()
             .filter(|f| {
-                matches!(f.extension.as_str(), ".ts" | ".tsx" | ".js" | ".jsx" | ".py" | ".go")
-                    && f.size_bytes < MAX_FILE_SIZE_FOR_ENV_SCAN
+                matches!(
+                    f.extension.as_str(),
+                    ".ts" | ".tsx" | ".js" | ".jsx" | ".py" | ".go"
+                ) && f.size_bytes < MAX_FILE_SIZE_FOR_ENV_SCAN
             })
             .take(MAX_CODE_FILES_FOR_ENV_SCAN)
             .collect();
 
         for file in code_files {
-            let Ok(raw) =
-                std::fs::read_to_string(self.root_path.join(&file.relative_path))
-            else {
+            let Ok(raw) = std::fs::read_to_string(self.root_path.join(&file.relative_path)) else {
                 continue;
             };
             for c in CODE_RE.captures_iter(&raw) {
-                let name = c.get(1).or_else(|| c.get(2)).map(|m| m.as_str().to_string());
+                let name = c
+                    .get(1)
+                    .or_else(|| c.get(2))
+                    .map(|m| m.as_str().to_string());
                 if let Some(name) = name {
                     by_name
                         .entry(name.clone())
@@ -780,7 +814,8 @@ impl CodebaseScanner {
                 .expect("re")
         });
         static EXPRESS: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r#"(?:app|router)\.(get|post|put|delete|patch)\s*\(['"](\/[^'"]*)"#).expect("re")
+            Regex::new(r#"(?:app|router)\.(get|post|put|delete|patch)\s*\(['"](\/[^'"]*)"#)
+                .expect("re")
         });
 
         let route_files: Vec<&FileInfo> = files
@@ -795,8 +830,7 @@ impl CodebaseScanner {
 
         let mut out = Vec::new();
         for file in route_files {
-            let Ok(raw) = std::fs::read_to_string(self.root_path.join(&file.relative_path))
-            else {
+            let Ok(raw) = std::fs::read_to_string(self.root_path.join(&file.relative_path)) else {
                 continue;
             };
             for c in APP_ROUTER.captures_iter(&raw) {
@@ -873,14 +907,15 @@ impl CodebaseScanner {
         }
 
         static API_SECRET: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r#"(?i)(?:api_?key|apikey|secret|password|token)\s*[:=]\s*['"][^'"]{10,}['"]"#)
-                .expect("re")
+            Regex::new(
+                r#"(?i)(?:api_?key|apikey|secret|password|token)\s*[:=]\s*['"][^'"]{10,}['"]"#,
+            )
+            .expect("re")
         });
         static OPENAI_KEY: Lazy<Regex> =
             Lazy::new(|| Regex::new(r"sk-[a-zA-Z0-9]{20,}").expect("re"));
-        static JWT: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r"eyJ[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{10,}").expect("re")
-        });
+        static JWT: Lazy<Regex> =
+            Lazy::new(|| Regex::new(r"eyJ[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{10,}").expect("re"));
 
         let code_files: Vec<&FileInfo> = files
             .iter()
@@ -896,8 +931,7 @@ impl CodebaseScanner {
             .collect();
 
         for file in code_files {
-            let Ok(raw) = std::fs::read_to_string(self.root_path.join(&file.relative_path))
-            else {
+            let Ok(raw) = std::fs::read_to_string(self.root_path.join(&file.relative_path)) else {
                 continue;
             };
             for (re, kind) in [
@@ -995,14 +1029,20 @@ mod tests {
         touch(&p.join("node_modules/x/index.js"), "module.exports = {};");
         let r = CodebaseScanner::new(p).scan();
         assert!(r.files.iter().any(|f| f.relative_path.ends_with("main.rs")));
-        assert!(!r.files.iter().any(|f| f.relative_path.contains("node_modules")));
+        assert!(!r
+            .files
+            .iter()
+            .any(|f| f.relative_path.contains("node_modules")));
     }
 
     #[test]
     fn detects_rust_stack() {
         let dir = tempdir().unwrap();
         let p = dir.path();
-        touch(&p.join("Cargo.toml"), "[package]\nname = \"x\"\n[dependencies]\nserde = \"1\"\n");
+        touch(
+            &p.join("Cargo.toml"),
+            "[package]\nname = \"x\"\n[dependencies]\nserde = \"1\"\n",
+        );
         touch(&p.join("src/main.rs"), "fn main() {}");
         let r = CodebaseScanner::new(p).scan();
         assert_eq!(r.tech_stack.primary, "Rust");
@@ -1018,8 +1058,14 @@ mod tests {
             r#"{"dependencies":{"react":"^18"},"devDependencies":{"vitest":"^1"}}"#,
         );
         let r = CodebaseScanner::new(p).scan();
-        assert!(r.dependencies.iter().any(|d| d.name == "react" && d.kind == DepKind::Production));
-        assert!(r.dependencies.iter().any(|d| d.name == "vitest" && d.kind == DepKind::Dev));
+        assert!(r
+            .dependencies
+            .iter()
+            .any(|d| d.name == "react" && d.kind == DepKind::Production));
+        assert!(r
+            .dependencies
+            .iter()
+            .any(|d| d.name == "vitest" && d.kind == DepKind::Dev));
     }
 
     #[test]
@@ -1041,15 +1087,24 @@ mod tests {
         let p = dir.path();
         touch(&p.join("src/main.rs"), "fn main() {}");
         let r = CodebaseScanner::new(p).scan();
-        assert!(r.security_hints.iter().any(|h| h.kind == "missing-gitignore"));
+        assert!(r
+            .security_hints
+            .iter()
+            .any(|h| h.kind == "missing-gitignore"));
     }
 
     #[test]
     fn extracts_env_vars_from_example_and_code() {
         let dir = tempdir().unwrap();
         let p = dir.path();
-        touch(&p.join(".env.example"), "API_URL=  # base URL of the API\nDB_PASSWORD=\n");
-        touch(&p.join("src/index.ts"), r#"const x = process.env.API_URL; const y = process.env.UNDOC_VAR;"#);
+        touch(
+            &p.join(".env.example"),
+            "API_URL=  # base URL of the API\nDB_PASSWORD=\n",
+        );
+        touch(
+            &p.join("src/index.ts"),
+            r#"const x = process.env.API_URL; const y = process.env.UNDOC_VAR;"#,
+        );
         let r = CodebaseScanner::new(p).scan();
         let api = r.env_vars.iter().find(|v| v.name == "API_URL").unwrap();
         assert!(api.has_example);
@@ -1068,7 +1123,11 @@ mod tests {
             "export async function GET(req: Request) { return new Response(); }",
         );
         let r = CodebaseScanner::new(p).scan();
-        let route = r.api_routes.iter().find(|r| r.method == "GET").expect("route");
+        let route = r
+            .api_routes
+            .iter()
+            .find(|r| r.method == "GET")
+            .expect("route");
         assert_eq!(route.path, "/api/widgets");
     }
 }

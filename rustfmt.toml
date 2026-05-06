@@ -16,4 +16,4 @@ reorder_imports = true
 reorder_modules = true
 remove_nested_parens = true
 match_block_trailing_comma = false
-fn_args_layout = "Tall"
+fn_params_layout = "Tall"

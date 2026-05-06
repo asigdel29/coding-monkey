@@ -117,19 +117,27 @@ fn has_any_manifest(path: &Path) -> bool {
 }
 
 fn detect_stack(path: &Path) -> TechStack {
-    if path.join("Cargo.toml").exists() { return TechStack::Rust; }
-    if path.join("package.json").exists() { return TechStack::Node; }
+    if path.join("Cargo.toml").exists() {
+        return TechStack::Rust;
+    }
+    if path.join("package.json").exists() {
+        return TechStack::Node;
+    }
     if path.join("pyproject.toml").exists() || path.join("requirements.txt").exists() {
         return TechStack::Python;
     }
-    if path.join("go.mod").exists() { return TechStack::Go; }
+    if path.join("go.mod").exists() {
+        return TechStack::Go;
+    }
     if path.join("build.gradle").exists()
         || path.join("build.gradle.kts").exists()
         || path.join("pom.xml").exists()
     {
         return TechStack::Jvm;
     }
-    if path.join("Gemfile").exists() { return TechStack::Ruby; }
+    if path.join("Gemfile").exists() {
+        return TechStack::Ruby;
+    }
     TechStack::Unknown
 }
 
@@ -137,9 +145,7 @@ fn estimate_complexity(path: &Path) -> std::io::Result<RepoComplexity> {
     // Count files via the `ignore` crate so we honor .gitignore. Cap at
     // 50k entries — anything beyond that is "Large" by definition.
     let mut count = 0usize;
-    let walker = ignore::WalkBuilder::new(path)
-        .max_depth(Some(8))
-        .build();
+    let walker = ignore::WalkBuilder::new(path).max_depth(Some(8)).build();
     for entry in walker.flatten() {
         if entry.file_type().map(|f| f.is_file()).unwrap_or(false) {
             count += 1;

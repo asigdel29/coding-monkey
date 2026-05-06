@@ -85,7 +85,10 @@ pub fn assemble_context(cwd: &Path, kind: AgentKind, tentacle_id: &str) -> Assem
         context.join("CONVENTIONS.md"),
         context.join("GLOSSARY.md"),
         context.join(agent_file),
-        monkey.join("tentacles").join(tentacle_id).join("CONTEXT.md"),
+        monkey
+            .join("tentacles")
+            .join(tentacle_id)
+            .join("CONTEXT.md"),
         monkey.join("tentacles").join(tentacle_id).join("todo.md"),
     ];
 

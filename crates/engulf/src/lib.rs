@@ -27,16 +27,26 @@
 //! `monkey-engulf` — repo intelligence: scanner, security audit, deployer,
 //! Obsidian vault writer.
 
+/// Deployment runbook generator (LLM-augmented).
 pub mod deployer;
+/// LLM client used by the engulf phases.
 pub mod llm;
+/// Prompt templates for each LLM-augmented phase.
 pub mod prompts;
+/// Filesystem scanner — stack, deps, env vars, CI, routes, security hints.
 pub mod scanner;
+/// LLM-assisted OWASP-style security audit.
 pub mod security;
+/// Obsidian-shaped Markdown vault writer.
 pub mod vault;
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+pub use deployer::{
+    generate_deployment_runbook, generate_with as generate_deployment_with, DeployStep,
+    DeploymentRunbook, RunbookOptions,
+};
 pub use scanner::{
     APIRoute, CIConfig, CIType, CodebaseScanner, DepKind, DepSource, DependencyInfo, EnvVarInfo,
     FileInfo, GitInfo, HintSeverity, ScanResult, SchemaInfo, SchemaKind, SecurityHint,
@@ -45,10 +55,6 @@ pub use scanner::{
 pub use security::{
     audit as run_security_audit, audit_with as run_security_audit_with, AuditOptions,
     SecurityAuditResult, SecurityFinding, Severity,
-};
-pub use deployer::{
-    generate_deployment_runbook, generate_with as generate_deployment_with, DeployStep,
-    DeploymentRunbook, RunbookOptions,
 };
 pub use vault::{write_vault, VaultWriteResult};
 
@@ -99,9 +105,18 @@ pub enum Provider {
 /// no-ops while their modules are being ported. Each follow-up commit
 /// flips one phase from `phases_skipped` to `phases_completed`.
 pub async fn run_engulf(config: EngulfConfig) -> anyhow::Result<EngulfSummary> {
-    let target = config.target_path.canonicalize().unwrap_or(config.target_path.clone());
+    let target = config
+        .target_path
+        .canonicalize()
+        .unwrap_or(config.target_path.clone());
     let phases = if config.phases.is_empty() {
-        vec![Phase::Scan, Phase::Security, Phase::Docs, Phase::Vault, Phase::Deploy]
+        vec![
+            Phase::Scan,
+            Phase::Security,
+            Phase::Docs,
+            Phase::Vault,
+            Phase::Deploy,
+        ]
     } else {
         config.phases.clone()
     };
@@ -152,7 +167,9 @@ pub async fn run_engulf(config: EngulfConfig) -> anyhow::Result<EngulfSummary> {
                 summary.phases_completed.push(Phase::Security);
             }
             Phase::Docs => {
-                summary.phases_skipped.push((Phase::Docs, "docs phase port pending".into()));
+                summary
+                    .phases_skipped
+                    .push((Phase::Docs, "docs phase port pending".into()));
             }
             Phase::Deploy => {
                 let Some(scan) = scan_result.as_ref() else {
@@ -190,13 +207,12 @@ pub async fn run_engulf(config: EngulfConfig) -> anyhow::Result<EngulfSummary> {
                 };
                 let audit = audit_result.clone().unwrap_or_default();
                 let runbook = runbook_result.clone().unwrap_or_default();
-                let Some(out) = output_path_for(&config, &target) else { continue; };
+                let Some(out) = output_path_for(&config, &target) else {
+                    continue;
+                };
                 let vault_path = out.join("vault");
                 let r = vault::write_vault(scan, &audit, &runbook, &vault_path)?;
-                tracing::info!(
-                    notes = r.notes_written.len(),
-                    "vault written"
-                );
+                tracing::info!(notes = r.notes_written.len(), "vault written");
                 summary.files_written.extend(r.notes_written.clone());
                 summary.phases_completed.push(Phase::Vault);
             }

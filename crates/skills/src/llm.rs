@@ -85,7 +85,12 @@ impl LLMClient {
     }
 
     /// Pick a model spec without calling out — useful for telemetry.
-    pub fn pick(&self, task_type: TaskType, force_tier: Option<ModelTier>, provider: Option<Provider>) -> ModelSpec {
+    pub fn pick(
+        &self,
+        task_type: TaskType,
+        force_tier: Option<ModelTier>,
+        provider: Option<Provider>,
+    ) -> ModelSpec {
         let p = provider.unwrap_or(self.default_provider);
         let core_provider = match p {
             Provider::Anthropic => CoreProvider::Anthropic,
@@ -102,13 +107,15 @@ impl LLMClient {
             .cloned();
         preferred
             .or_else(|| selector.select(task_type).cloned())
-            .unwrap_or_else(|| candidates.first().cloned().unwrap_or_else(|| {
-                self.registry
-                    .list_all()
-                    .into_iter()
-                    .next()
-                    .expect("registry non-empty")
-            }))
+            .unwrap_or_else(|| {
+                candidates.first().cloned().unwrap_or_else(|| {
+                    self.registry
+                        .list_all()
+                        .into_iter()
+                        .next()
+                        .expect("registry non-empty")
+                })
+            })
     }
 
     /// Send the request and return the model's text plus usage.
@@ -153,10 +160,10 @@ impl LLMClient {
         let status = resp.status();
         let raw = resp.text().await.context("anthropic body")?;
         if !status.is_success() {
-            return Err(anyhow!("anthropic {}: {}", status, raw));
+            return Err(anyhow!("anthropic {status}: {raw}"));
         }
-        let parsed: AnthropicResp = serde_json::from_str(&raw)
-            .with_context(|| format!("anthropic decode: {raw}"))?;
+        let parsed: AnthropicResp =
+            serde_json::from_str(&raw).with_context(|| format!("anthropic decode: {raw}"))?;
         let text = parsed
             .content
             .into_iter()
@@ -168,7 +175,11 @@ impl LLMClient {
             input_tokens: parsed.usage.input_tokens,
             output_tokens: parsed.usage.output_tokens,
             total_tokens: parsed.usage.input_tokens + parsed.usage.output_tokens,
-            estimated_cost_usd: cost(&model, parsed.usage.input_tokens, parsed.usage.output_tokens),
+            estimated_cost_usd: cost(
+                &model,
+                parsed.usage.input_tokens,
+                parsed.usage.output_tokens,
+            ),
         };
         Ok(LLMResponse { text, model, usage })
     }
@@ -204,17 +215,21 @@ impl LLMClient {
         let status = resp.status();
         let raw = resp.text().await.context("openai body")?;
         if !status.is_success() {
-            return Err(anyhow!("openai {}: {}", status, raw));
+            return Err(anyhow!("openai {status}: {raw}"));
         }
-        let parsed: OpenAIResp = serde_json::from_str(&raw)
-            .with_context(|| format!("openai decode: {raw}"))?;
+        let parsed: OpenAIResp =
+            serde_json::from_str(&raw).with_context(|| format!("openai decode: {raw}"))?;
         let text = parsed
             .choices
             .first()
             .map(|c| c.message.content.clone())
             .unwrap_or_default();
         let inp = parsed.usage.as_ref().map(|u| u.prompt_tokens).unwrap_or(0);
-        let outp = parsed.usage.as_ref().map(|u| u.completion_tokens).unwrap_or(0);
+        let outp = parsed
+            .usage
+            .as_ref()
+            .map(|u| u.completion_tokens)
+            .unwrap_or(0);
         let usage = TokenUsage {
             input_tokens: inp,
             output_tokens: outp,
@@ -293,7 +308,11 @@ mod tests {
     #[test]
     fn pick_respects_force_tier() {
         let c = LLMClient::new(Provider::Anthropic);
-        let m = c.pick(TaskType::Chat /* default Fast */, Some(ModelTier::Powerful), None);
+        let m = c.pick(
+            TaskType::Chat, /* default Fast */
+            Some(ModelTier::Powerful),
+            None,
+        );
         assert_eq!(m.tier, ModelTier::Powerful);
     }
 }

@@ -55,11 +55,18 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
             if dir.is_dir() {
                 for entry in std::fs::read_dir(&dir)? {
                     let p = entry?.path();
-                    if !p.is_file() { continue; }
-                    if p.extension().and_then(|e| e.to_str()) != Some("log") { continue; }
+                    if !p.is_file() {
+                        continue;
+                    }
+                    if p.extension().and_then(|e| e.to_str()) != Some("log") {
+                        continue;
+                    }
                     match verify_audit_log(&p) {
                         Ok(()) => eprintln!("[ok]   {}", p.display()),
-                        Err(e) => { bad += 1; eprintln!("[fail] {} — {e}", p.display()); }
+                        Err(e) => {
+                            bad += 1;
+                            eprintln!("[fail] {} — {e}", p.display());
+                        }
                     }
                 }
             }

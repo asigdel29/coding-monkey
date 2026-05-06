@@ -60,15 +60,17 @@ pub fn App() -> impl IntoView {
     // Native xterm handles, keyed by terminal id. Lives outside leptos
     // signals because the JS objects are not `Send` and we don't want
     // them in the reactive graph anyway.
-    let terms: Rc<RefCell<HashMap<String, Terminal>>> =
-        Rc::new(RefCell::new(HashMap::new()));
+    let terms: Rc<RefCell<HashMap<String, Terminal>>> = Rc::new(RefCell::new(HashMap::new()));
 
     // ── Inbound WS dispatch ─────────────────────────────────────────────────
     {
         let terms = Rc::clone(&terms);
         let client_for_terms = client.clone();
         client.on_message(move |msg| match msg {
-            ServerMsg::Ready { cwd: c, tentacles: t } => {
+            ServerMsg::Ready {
+                cwd: c,
+                tentacles: t,
+            } => {
                 set_cwd.set(c);
                 set_tentacles.set(t);
             }
@@ -100,12 +102,14 @@ pub fn App() -> impl IntoView {
                     set_context_body.set(content);
                 }
             }
-            ServerMsg::TermSpawned { id, cmd, tentacle_id } => {
+            ServerMsg::TermSpawned {
+                id,
+                cmd,
+                tentacle_id,
+            } => {
                 let tab = TerminalTab {
                     id: id.clone(),
-                    label: cmd
-                        .clone()
-                        .unwrap_or_else(|| "agent".into()),
+                    label: cmd.clone().unwrap_or_else(|| "agent".into()),
                     tentacle_id,
                 };
                 set_tabs.update(|v| v.push(tab));
@@ -164,7 +168,11 @@ pub fn App() -> impl IntoView {
     let client_spawn = client.clone();
     let spawn_terminal = move |_| {
         let tentacle = active_id.get_untracked();
-        let tid = if tentacle.is_empty() { None } else { Some(tentacle) };
+        let tid = if tentacle.is_empty() {
+            None
+        } else {
+            Some(tentacle)
+        };
         client_spawn.send(&ClientMsg::TermSpawn {
             tentacle_id: tid,
             cols: Some(120),
@@ -346,8 +354,12 @@ fn prompt_for(message: &str) -> Option<String> {
 /// wire its `onData` handler to the WS. The container element gets a
 /// `data-term-id` attribute so a future tab-switch can toggle visibility.
 fn mount_terminal(id: &str, terms: &Rc<RefCell<HashMap<String, Terminal>>>, client: &DeckClient) {
-    let Some(doc) = web_sys::window().and_then(|w| w.document()) else { return };
-    let Some(host) = doc.get_element_by_id("terminal-host") else { return };
+    let Some(doc) = web_sys::window().and_then(|w| w.document()) else {
+        return;
+    };
+    let Some(host) = doc.get_element_by_id("terminal-host") else {
+        return;
+    };
 
     let pane = match doc.create_element("div") {
         Ok(p) => p,

@@ -121,7 +121,7 @@ impl AuditLogger {
 
         let mut file = OpenOptions::new().append(true).open(&self.path)?;
         let line = serde_json::to_string(&entry).map_err(io_other)?;
-        writeln!(file, "{}", line)?;
+        writeln!(file, "{line}")?;
         self.last_hash = entry.this_hash.clone();
         Ok(entry)
     }
@@ -140,11 +140,10 @@ pub fn verify_audit_log(path: &Path) -> Result<(), VerifyError> {
         if line.trim().is_empty() {
             continue;
         }
-        let entry: AuditEntry =
-            serde_json::from_str(&line).map_err(|e| VerifyError::Decode {
-                line: lineno + 1,
-                source: e,
-            })?;
+        let entry: AuditEntry = serde_json::from_str(&line).map_err(|e| VerifyError::Decode {
+            line: lineno + 1,
+            source: e,
+        })?;
         if entry.prev_hash != prev_hash {
             return Err(VerifyError::ChainBreak {
                 line: lineno + 1,
@@ -232,7 +231,7 @@ fn last_hash_in_file(path: &Path) -> std::io::Result<String> {
 }
 
 fn io_other<E: std::fmt::Display>(e: E) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+    std::io::Error::other(e.to_string())
 }
 
 #[cfg(test)]
@@ -260,9 +259,7 @@ mod tests {
         logger
             .log(AuditEventType::AgentSpawn, json!({ "kind": "claude" }))
             .unwrap();
-        logger
-            .log(AuditEventType::SessionEnd, json!({}))
-            .unwrap();
+        logger.log(AuditEventType::SessionEnd, json!({})).unwrap();
         verify_audit_log(&path).expect("clean chain verifies");
     }
 
@@ -288,7 +285,7 @@ mod tests {
             VerifyError::ChainBreak { line, .. } | VerifyError::HashMismatch { line, .. } => {
                 assert!(line >= 2);
             }
-            other => panic!("unexpected variant: {:?}", other),
+            other => panic!("unexpected variant: {other:?}"),
         }
     }
 

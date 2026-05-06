@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+publish.workspace = true
 description = "Web frontend server: HTTP + WebSocket + tentacles + PTY (axum)"
 
 [lib]
