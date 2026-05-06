@@ -294,9 +294,7 @@ fn build_fly_steps(scan: &ScanResult) -> Vec<DeployStep> {
         DeployStep {
             title: "Set Secrets".into(),
             command: None,
-            description: format!(
-                "Set environment variables as Fly secrets:\n{secrets_block}"
-            ),
+            description: format!("Set environment variables as Fly secrets:\n{secrets_block}"),
             is_manual: true,
         },
         DeployStep {
@@ -386,9 +384,7 @@ fn build_generic_steps(scan: &ScanResult) -> Vec<DeployStep> {
         DeployStep {
             title: "Configure Environment".into(),
             command: Some("cp .env.example .env".into()),
-            description: format!(
-                "Copy .env.example to .env and fill in real values:\n{env_block}"
-            ),
+            description: format!("Copy .env.example to .env and fill in real values:\n{env_block}"),
             is_manual: true,
         },
         DeployStep {
@@ -439,12 +435,7 @@ async fn enhance_with_llm(
 
 // ─── Markdown ───────────────────────────────────────────────────────────────
 
-fn build_markdown(
-    scan: &ScanResult,
-    platform: &str,
-    steps: &[DeployStep],
-    tips: &str,
-) -> String {
+fn build_markdown(scan: &ScanResult, platform: &str, steps: &[DeployStep], tips: &str) -> String {
     let now = chrono::Utc::now().format("%Y-%m-%d");
     let mut steps_md = String::new();
     for (i, s) in steps.iter().enumerate() {
@@ -480,13 +471,12 @@ fn build_markdown(
         t
     };
 
-    let runtime_line = if scan.tech_stack.language == "TypeScript"
-        || scan.tech_stack.language == "JavaScript"
-    {
-        "- Node.js ≥ 20"
-    } else {
-        ""
-    };
+    let runtime_line =
+        if scan.tech_stack.language == "TypeScript" || scan.tech_stack.language == "JavaScript" {
+            "- Node.js ≥ 20"
+        } else {
+            ""
+        };
     let pm_line = match &scan.tech_stack.package_manager {
         Some(pm) => format!("- Package manager: {pm}"),
         None => String::new(),
@@ -543,9 +533,7 @@ fn build_markdown(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scanner::{
-        APIRoute, CIConfig, CIType, EnvVarInfo, ScanResult, TechStackInfo,
-    };
+    use crate::scanner::{APIRoute, CIConfig, CIType, EnvVarInfo, ScanResult, TechStackInfo};
 
     fn fake_scan(deploy_target: Option<&str>, ci: Vec<CIType>, primary: &str) -> ScanResult {
         ScanResult {
@@ -558,12 +546,15 @@ mod tests {
                 test_framework: None,
                 deploy_target: deploy_target.map(|s| s.to_string()),
             },
-            ci_configs: ci.into_iter().map(|t| CIConfig {
-                ci_type: t,
-                file_path: format!("{:?}", t),
-                deploy_target: None,
-                build_command: None,
-            }).collect(),
+            ci_configs: ci
+                .into_iter()
+                .map(|t| CIConfig {
+                    ci_type: t,
+                    file_path: format!("{t:?}"),
+                    deploy_target: None,
+                    build_command: None,
+                })
+                .collect(),
             env_vars: vec![EnvVarInfo {
                 name: "API_URL".into(),
                 has_example: true,
@@ -596,9 +587,15 @@ mod tests {
     #[tokio::test]
     async fn generic_runbook_lists_install_build_start() {
         let scan = fake_scan(None, vec![], "TypeScript");
-        let r = generate_with(&scan, RunbookOptions { skip_llm: true, ..Default::default() })
-            .await
-            .unwrap();
+        let r = generate_with(
+            &scan,
+            RunbookOptions {
+                skip_llm: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(r.platform, "Unknown");
         let titles: Vec<_> = r.steps.iter().map(|s| s.title.as_str()).collect();
         assert!(titles.contains(&"Install Dependencies"));
@@ -610,9 +607,15 @@ mod tests {
     #[tokio::test]
     async fn vercel_runbook_more_steps_so_longer_estimate() {
         let scan = fake_scan(None, vec![CIType::Vercel], "Next.js");
-        let r = generate_with(&scan, RunbookOptions { skip_llm: true, ..Default::default() })
-            .await
-            .unwrap();
+        let r = generate_with(
+            &scan,
+            RunbookOptions {
+                skip_llm: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(r.platform, "Vercel");
         assert_eq!(r.estimated_time, "30-60 minutes");
         assert!(r.steps.iter().any(|s| s.title == "Deploy to Production"));
@@ -627,9 +630,15 @@ mod tests {
             found_in_code: true,
             description: None,
         });
-        let r = generate_with(&scan, RunbookOptions { skip_llm: true, ..Default::default() })
-            .await
-            .unwrap();
+        let r = generate_with(
+            &scan,
+            RunbookOptions {
+                skip_llm: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
         assert!(r.env_vars_required.contains(&"SECRET_TOKEN".to_string()));
         assert!(!r.env_vars_required.contains(&"API_URL".to_string()));
     }

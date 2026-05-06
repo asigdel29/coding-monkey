@@ -32,6 +32,11 @@ use wasm_bindgen::JsCast;
 use web_sys::{BinaryType, MessageEvent, WebSocket};
 
 /// Outbound — must match the deck server's schemas exactly.
+///
+/// Some variants are part of the wire surface but not yet wired up
+/// from the UI; allow dead code so the compiler doesn't flag them
+/// before the corresponding panel ships.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
 pub enum ClientMsg {
@@ -141,6 +146,7 @@ pub struct Tentacle {
     /// Title (first H1 of CONTEXT.md or the id).
     pub title: String,
     /// Created-at timestamp in ms (best-effort).
+    #[allow(dead_code)]
     #[serde(rename = "created_at_ms", default)]
     pub created_at_ms: u64,
 }
@@ -157,6 +163,7 @@ pub struct Todo {
 }
 
 /// Connection lifecycle states the UI cares about.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnState {
     /// Initial state before first connect.
@@ -259,9 +266,7 @@ impl DeckClient {
                         (cb)(msg);
                     }
                 } else if let Ok(v) = serde_json::from_str::<Value>(&s) {
-                    web_sys::console::warn_1(
-                        &format!("deck: unhandled message {}", v).into(),
-                    );
+                    web_sys::console::warn_1(&format!("deck: unhandled message {v}").into());
                 }
             }
         }) as Box<dyn FnMut(MessageEvent)>);
@@ -283,7 +288,9 @@ impl DeckClient {
     /// Send a typed message. No-op if the socket isn't OPEN.
     pub fn send(&self, msg: &ClientMsg) {
         let inner = self.inner.borrow();
-        let Some(sock) = inner.socket.as_ref() else { return };
+        let Some(sock) = inner.socket.as_ref() else {
+            return;
+        };
         if sock.ready_state() != WebSocket::OPEN {
             return;
         }

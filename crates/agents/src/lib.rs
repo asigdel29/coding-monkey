@@ -32,14 +32,20 @@
 //! `monkey-agents` — spawn agent CLIs with assembled context, redaction, and
 //! tamper-evident audit logging.
 
+/// Append-only, hash-chained audit log for agent lifecycle events.
 pub mod audit;
+/// Context assembly — gather `.monkey/context/` and tentacle docs into a prompt.
 pub mod context;
+/// CLI doctor — verify `claude` / `codex` are present and pickable.
 pub mod doctor;
+/// Stdout redactor — scrub API keys and other secrets before logging.
 pub mod redact;
+/// PTY-spawn the chosen agent CLI with the assembled prompt.
 pub mod spawn;
+/// Public types for `monkey-agents` (`AgentKind`, `SpawnOpts`, …).
 pub mod types;
 
-pub use audit::{AuditEntry, AuditEventType, AuditLogger, verify_audit_log};
+pub use audit::{verify_audit_log, AuditEntry, AuditEventType, AuditLogger};
 pub use context::{assemble_context, AssembledContext};
 pub use doctor::{doctor, pick_auto, DoctorReport};
 pub use redact::{redact, redact_object};

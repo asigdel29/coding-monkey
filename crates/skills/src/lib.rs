@@ -22,10 +22,15 @@
 
 //! `monkey-skills` — composable pre-merge / pre-push gates.
 
+/// Git plumbing helpers used by skills (current branch, base, diff, …).
 pub mod git;
+/// LLM client abstractions and request/response types for skill prompts.
 pub mod llm;
+/// Skill registry — name → boxed `Skill` instance.
 pub mod registry;
+/// Concrete skills (review, investigate, cso, ship, pentest, …).
 pub mod skills;
+/// Shared types (`Skill` trait, `SkillContext`, `SkillResult`, `Severity`).
 pub mod types;
 
 pub use llm::{has_any_llm_key, LLMClient, LLMRequest, LLMResponse, LLMUnavailableError};

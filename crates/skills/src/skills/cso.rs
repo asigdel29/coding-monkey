@@ -45,8 +45,12 @@ struct Input {
     skip_llm: bool,
 }
 
-fn default_mode() -> String { "daily".into() }
-fn default_fail_on() -> String { "high".into() }
+fn default_mode() -> String {
+    "daily".into()
+}
+fn default_fail_on() -> String {
+    "high".into()
+}
 
 /// `monkey cso` skill.
 #[derive(Debug, Clone, Copy)]
@@ -54,12 +58,18 @@ pub struct Cso;
 
 #[async_trait]
 impl Skill for Cso {
-    fn name(&self) -> &str { "cso" }
+    fn name(&self) -> &str {
+        "cso"
+    }
     fn description(&self) -> &str {
         "CSO security audit — engulf scan + dep advisories + optional pentest"
     }
-    fn category(&self) -> &str { "security" }
-    fn composes(&self) -> &[&str] { &["pentest"] }
+    fn category(&self) -> &str {
+        "security"
+    }
+    fn composes(&self) -> &[&str] {
+        &["pentest"]
+    }
 
     async fn run(
         &self,
@@ -67,13 +77,12 @@ impl Skill for Cso {
         ctx: &SkillContext,
     ) -> anyhow::Result<SkillResult> {
         let start = Instant::now();
-        let input: Input = serde_json::from_value(input)
-            .unwrap_or(Input {
-                mode: default_mode(),
-                pentest_target: None,
-                fail_on: default_fail_on(),
-                skip_llm: false,
-            });
+        let input: Input = serde_json::from_value(input).unwrap_or(Input {
+            mode: default_mode(),
+            pentest_target: None,
+            fail_on: default_fail_on(),
+            skip_llm: false,
+        });
         let cwd = &ctx.cwd;
         let mut findings: Vec<SkillFinding> = Vec::new();
 
@@ -117,16 +126,21 @@ impl Skill for Cso {
         let dep = dep_audit(cwd);
         if dep.advisories > 0 {
             findings.push(SkillFinding {
-                severity: if dep.advisories > 5 { Severity::High } else { Severity::Medium },
-                title: format!(
-                    "{} dependency advisories from {}",
-                    dep.advisories, dep.tool
-                ),
+                severity: if dep.advisories > 5 {
+                    Severity::High
+                } else {
+                    Severity::Medium
+                },
+                title: format!("{} dependency advisories from {}", dep.advisories, dep.tool),
                 file_path: None,
                 line: None,
                 recommendation: Some(format!(
                     "Run \"{} audit --fix\" or upgrade affected packages.",
-                    if dep.tool == "pnpm-audit" { "pnpm" } else { "npm" }
+                    if dep.tool == "pnpm-audit" {
+                        "pnpm"
+                    } else {
+                        "npm"
+                    }
                 )),
                 detail: None,
             });
@@ -211,11 +225,7 @@ impl Skill for Cso {
                     (Some(p), None) => format!(" — `{p}`"),
                     _ => String::new(),
                 };
-                md.push_str(&format!(
-                    "- **{}** {}{loc}\n",
-                    f.severity.upper(),
-                    f.title
-                ));
+                md.push_str(&format!("- **{}** {}{loc}\n", f.severity.upper(), f.title));
             }
         }
 
@@ -268,7 +278,10 @@ fn dep_audit(cwd: &Path) -> DepAudit {
     if let Some(r) = try_npm_audit(cwd) {
         return r;
     }
-    DepAudit { advisories: 0, tool: "none".into() }
+    DepAudit {
+        advisories: 0,
+        tool: "none".into(),
+    }
 }
 
 fn try_pnpm_audit(cwd: &Path) -> Option<DepAudit> {
@@ -287,7 +300,10 @@ fn try_pnpm_audit(cwd: &Path) -> Option<DepAudit> {
         .values()
         .filter_map(|v| v.as_u64().map(|n| n as usize))
         .sum();
-    Some(DepAudit { advisories: total, tool: "pnpm-audit".into() })
+    Some(DepAudit {
+        advisories: total,
+        tool: "pnpm-audit".into(),
+    })
 }
 
 fn try_npm_audit(cwd: &Path) -> Option<DepAudit> {
@@ -304,7 +320,10 @@ fn try_npm_audit(cwd: &Path) -> Option<DepAudit> {
         .and_then(|v| v.get("total"))
         .and_then(|n| n.as_u64())
         .unwrap_or(0) as usize;
-    Some(DepAudit { advisories: total, tool: "npm-audit".into() })
+    Some(DepAudit {
+        advisories: total,
+        tool: "npm-audit".into(),
+    })
 }
 
 static SECRET_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
@@ -327,7 +346,9 @@ fn quick_secret_sweep(cwd: &Path) -> Vec<SkillFinding> {
     let mut out = Vec::new();
     for c in [".env", ".env.local", ".env.production", "config.json"] {
         let fp = cwd.join(c);
-        let Ok(txt) = std::fs::read_to_string(&fp) else { continue };
+        let Ok(txt) = std::fs::read_to_string(&fp) else {
+            continue;
+        };
         for (i, line) in txt.lines().enumerate() {
             if looks_like_secret(line) {
                 out.push(SkillFinding {
@@ -336,8 +357,7 @@ fn quick_secret_sweep(cwd: &Path) -> Vec<SkillFinding> {
                     file_path: Some(c.to_string()),
                     line: Some(i + 1),
                     recommendation: Some(
-                        "Remove from version control, rotate the secret, add to .gitignore."
-                            .into(),
+                        "Remove from version control, rotate the secret, add to .gitignore.".into(),
                     ),
                     detail: None,
                 });
@@ -353,11 +373,11 @@ mod tests {
 
     #[test]
     fn looks_like_secret_matches_known_shapes() {
-        assert!(looks_like_secret("KEY=sk-ant-api03-1234567890abcdefghij1234"));
-        assert!(looks_like_secret("AKIA0123456789ABCDEF"));
         assert!(looks_like_secret(
-            "-----BEGIN PRIVATE KEY-----"
+            "KEY=sk-ant-api03-1234567890abcdefghij1234"
         ));
+        assert!(looks_like_secret("AKIA0123456789ABCDEF"));
+        assert!(looks_like_secret("-----BEGIN PRIVATE KEY-----"));
         assert!(looks_like_secret(
             "GH=ghp_1234567890123456789012345678901234567890"
         ));

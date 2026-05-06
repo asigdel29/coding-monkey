@@ -29,13 +29,18 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         _ => Provider::Anthropic,
     };
     let config = EngulfConfig {
-        target_path: args.path.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into())),
+        target_path: args
+            .path
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into())),
         output_path: args.output,
         phases: vec![],
         provider,
         auto_run: args.auto,
     };
     let summary = run_engulf(config).await?;
-    eprintln!("engulf complete: {} files written", summary.files_written.len());
+    eprintln!(
+        "engulf complete: {} files written",
+        summary.files_written.len()
+    );
     Ok(())
 }

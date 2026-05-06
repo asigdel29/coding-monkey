@@ -34,9 +34,7 @@ pub struct GitError {
 pub fn run(cwd: &Path, args: &[&str], allow_fail: bool) -> Result<String, GitError> {
     let out = Command::new("git").current_dir(cwd).args(args).output();
     match out {
-        Ok(o) if o.status.success() => {
-            Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
-        }
+        Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).trim().to_string()),
         Ok(o) if allow_fail => Ok(String::from_utf8_lossy(&o.stdout).trim().to_string()),
         Ok(o) => Err(GitError {
             args: args.iter().map(|s| s.to_string()).collect(),
@@ -123,7 +121,10 @@ pub fn diff_against(cwd: &Path, base: &str, stat: bool) -> String {
 pub fn changed_files(cwd: &Path, base: &str) -> Vec<String> {
     let range = format!("{base}...HEAD");
     let out = run(cwd, &["diff", "--name-only", &range], true).unwrap_or_default();
-    out.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+    out.lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 /// `git log --oneline <base>..HEAD -n <limit>`.
@@ -132,7 +133,10 @@ pub fn commit_messages(cwd: &Path, base: &str, limit: usize) -> Vec<String> {
     let limit_s = limit.to_string();
     let args: Vec<&str> = vec!["log", "--oneline", "--no-decorate", &range, "-n", &limit_s];
     let out = run(cwd, &args, true).unwrap_or_default();
-    out.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+    out.lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 /// Whether `name` is in `git remote`.
@@ -162,11 +166,17 @@ pub fn read_version(cwd: &Path) -> Option<VersionInfo> {
             let raw = std::fs::read_to_string(&fp).ok()?;
             let json: serde_json::Value = serde_json::from_str(&raw).ok()?;
             if let Some(v) = json.get("version").and_then(|x| x.as_str()) {
-                return Some(VersionInfo { file: fp, version: v.to_string() });
+                return Some(VersionInfo {
+                    file: fp,
+                    version: v.to_string(),
+                });
             }
         } else {
             let raw = std::fs::read_to_string(&fp).ok()?;
-            return Some(VersionInfo { file: fp, version: raw.trim().to_string() });
+            return Some(VersionInfo {
+                file: fp,
+                version: raw.trim().to_string(),
+            });
         }
     }
     None
@@ -216,8 +226,8 @@ pub fn bump_version(cwd: &Path, kind: BumpKind) -> std::io::Result<Option<BumpRe
     };
     if v.file.file_name().and_then(|s| s.to_str()) == Some("package.json") {
         let txt = std::fs::read_to_string(&v.file)?;
-        let updated = replace_first(&txt, "\"version\"", &format!("\"version\": \"{next}\""))
-            .unwrap_or(txt);
+        let updated =
+            replace_first(&txt, "\"version\"", &format!("\"version\": \"{next}\"")).unwrap_or(txt);
         std::fs::write(&v.file, updated)?;
     } else {
         std::fs::write(&v.file, format!("{next}\n"))?;
