@@ -29,6 +29,10 @@ rust-version = "1.88"
 license = "MIT"
 authors = ["Anubhav Sigdel <anu@getlora.com>"]
 repository = "https://github.com/asigdel29/coding-monkey"
+# Internal-only — these crates use intra-workspace `path = "..."` deps,
+# which crates.io rejects. Marking them unpublishable also tells
+# cargo-deny they're private (so `allow-wildcard-paths` applies).
+publish = false
 
 [workspace.dependencies]
 # Async runtime
