@@ -58,7 +58,7 @@ indicatif = "0.17"
 dialoguer = "0.11"
 
 # Crypto / hashing
-sha2 = "0.10"
+sha2 = "0.11"
 hmac = "0.12"
 base64 = "0.22"
 hex = "0.4"
