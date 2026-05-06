@@ -21,8 +21,11 @@
 
 //! `monkey-deck` — web frontend server.
 
+/// WebSocket message schemas (typed parse + serialize).
 pub mod schemas;
+/// Axum HTTP + WebSocket server, session lifecycle, rate limiting.
 pub mod server;
+/// Tentacle store — `.monkey/tentacles/<id>/` workspaces with todo + context.
 pub mod tentacles;
 
 pub use schemas::{parse_ws_msg, WsMsg};

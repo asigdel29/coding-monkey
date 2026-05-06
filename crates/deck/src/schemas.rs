@@ -23,6 +23,11 @@ use serde_json::Value;
 
 /// Inbound WS message tagged by `type`. Each variant is a strict
 /// shape — anything outside this enum is rejected by [`parse_ws_msg`].
+///
+/// Field-level docs are intentionally omitted: the variant docstring
+/// describes intent, the field names mirror the wire protocol, and
+/// `parse_ws_msg` is the authoritative validator for shape and bounds.
+#[allow(missing_docs)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum WsMsg {
@@ -61,7 +66,11 @@ pub enum WsMsg {
         cmd: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         args: Option<Vec<String>>,
-        #[serde(default, rename = "tentacleId", skip_serializing_if = "Option::is_none")]
+        #[serde(
+            default,
+            rename = "tentacleId",
+            skip_serializing_if = "Option::is_none"
+        )]
         tentacle_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         cols: Option<u16>,
@@ -220,7 +229,13 @@ pub fn parse_ws_msg(raw: &Value) -> Result<WsMsg, String> {
                     Some(out)
                 }
             };
-            WsMsg::TermSpawn { cmd, args, tentacle_id, cols, rows }
+            WsMsg::TermSpawn {
+                cmd,
+                args,
+                tentacle_id,
+                cols,
+                rows,
+            }
         }
         "term.input" => WsMsg::TermInput {
             id: id_field("id")?,
@@ -274,7 +289,13 @@ mod tests {
         let v = json!({ "type": "term.spawn" });
         let m = parse_ws_msg(&v).unwrap();
         match m {
-            WsMsg::TermSpawn { cmd, args, tentacle_id, cols, rows } => {
+            WsMsg::TermSpawn {
+                cmd,
+                args,
+                tentacle_id,
+                cols,
+                rows,
+            } => {
                 assert!(cmd.is_none() && args.is_none() && tentacle_id.is_none());
                 assert!(cols.is_none() && rows.is_none());
             }

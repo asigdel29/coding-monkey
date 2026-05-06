@@ -1,0 +1,29 @@
+# File: .gitleaks.toml
+#
+# Gitleaks configuration. Extends the default ruleset so every standard
+# detection still runs; the allowlist below carves out files whose entire
+# purpose is to *contain* fake credentials so we can test redaction and
+# secret-detection logic.
+#
+# Discovered automatically by gitleaks at the repo root — the security
+# workflow does not need to pass `--config`.
+#
+# History
+# 2026-05-06  Anubhav Sigdel  initial — silence false positives on test
+#                             fixtures so the security gauntlet is green.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Files that intentionally embed fake API keys / tokens for unit tests."
+paths = [
+    # Tests for the stdout redactor — every test feeds a fake key in and
+    # asserts it's masked out. Real keys here would defeat the test.
+    '''crates/agents/src/redact\.rs''',
+    # CSO skill's "looks_like_secret" tests — uses well-known fake AWS /
+    # Anthropic / PEM headers as positive cases.
+    '''crates/skills/src/skills/cso\.rs''',
+    # Deck WS schema tests — uses a 16-hex placeholder as an auth token.
+    '''crates/deck/src/schemas\.rs''',
+]

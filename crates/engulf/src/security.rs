@@ -139,8 +139,7 @@ fn category_for(kind: &str) -> Option<CategoryMeta> {
         "committed-secrets" => Some(CategoryMeta {
             category: "Secrets Management",
             cwe_id: Some("CWE-312"),
-            recommendation:
-                "Remove .env from git history using git-filter-repo, add to .gitignore",
+            recommendation: "Remove .env from git history using git-filter-repo, add to .gitignore",
         }),
         "openai-key" => Some(CategoryMeta {
             category: "API Key Exposure",
@@ -150,8 +149,7 @@ fn category_for(kind: &str) -> Option<CategoryMeta> {
         "jwt-token" => Some(CategoryMeta {
             category: "Token Exposure",
             cwe_id: Some("CWE-522"),
-            recommendation:
-                "Never hardcode tokens; use environment variables or secrets managers",
+            recommendation: "Never hardcode tokens; use environment variables or secrets managers",
         }),
         "missing-gitignore" => Some(CategoryMeta {
             category: "Configuration",
@@ -321,8 +319,8 @@ async fn run_llm_layer(
     };
     let raw = complete(req).await?;
     let stripped = strip_json_fences(&raw);
-    let parsed: Vec<RawLlmFinding> =
-        serde_json::from_str(stripped).map_err(|e| anyhow::anyhow!("decode LLM JSON: {e}; got: {stripped}"))?;
+    let parsed: Vec<RawLlmFinding> = serde_json::from_str(stripped)
+        .map_err(|e| anyhow::anyhow!("decode LLM JSON: {e}; got: {stripped}"))?;
     Ok(parsed.into_iter().map(raw_to_finding).collect())
 }
 
@@ -421,7 +419,11 @@ Respond with a JSON array of findings. Each finding must have:
 Return ONLY the JSON array, no markdown fences.",
         root = scan.root_path.display(),
         primary = scan.tech_stack.primary,
-        framework = scan.tech_stack.framework.as_deref().unwrap_or("unknown framework"),
+        framework = scan
+            .tech_stack
+            .framework
+            .as_deref()
+            .unwrap_or("unknown framework"),
         language = scan.tech_stack.language,
         deps = scan.dependencies.len(),
         routes = scan.api_routes.len(),
@@ -458,8 +460,7 @@ fn render_markdown(scan: &ScanResult, findings: &[SecurityFinding], summary: &st
         Severity::Low,
         Severity::Info,
     ] {
-        let group: Vec<&SecurityFinding> =
-            findings.iter().filter(|f| f.severity == sev).collect();
+        let group: Vec<&SecurityFinding> = findings.iter().filter(|f| f.severity == sev).collect();
         if group.is_empty() {
             continue;
         }
@@ -482,15 +483,12 @@ fn render_markdown(scan: &ScanResult, findings: &[SecurityFinding], summary: &st
             body.push_str(&format!("{}\n", f.description));
             if let Some(path) = &f.file_path {
                 let line = match f.line_number {
-                    Some(n) => format!(":{}", n),
+                    Some(n) => format!(":{n}"),
                     None => String::new(),
                 };
                 body.push_str(&format!("**Location:** `{path}{line}`\n"));
             }
-            body.push_str(&format!(
-                "\n> **Recommendation:** {}\n",
-                f.recommendation
-            ));
+            body.push_str(&format!("\n> **Recommendation:** {}\n", f.recommendation));
         }
         sections.push(body);
     }
@@ -575,9 +573,15 @@ mod tests {
             line_number: None,
         }]);
         // Force skip to make this deterministic regardless of env state.
-        let r = audit_with(&scan, AuditOptions { skip_llm: true, ..Default::default() })
-            .await
-            .unwrap();
+        let r = audit_with(
+            &scan,
+            AuditOptions {
+                skip_llm: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(r.critical_count, 1);
         assert!(r.findings[0].cwe_id.as_deref() == Some("CWE-312"));
         assert!(r.markdown.contains("Security Audit Report"));

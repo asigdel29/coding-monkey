@@ -25,7 +25,9 @@ use std::time::Instant;
 
 use crate::git;
 use crate::llm::{LLMClient, LLMRequest, LLMUnavailableError};
-use crate::types::{merge_usage, Provider, Severity, Skill, SkillContext, SkillFinding, SkillResult};
+use crate::types::{
+    merge_usage, Provider, Severity, Skill, SkillContext, SkillFinding, SkillResult,
+};
 
 const SYSTEM: &str = "You are a senior staff engineer doing a pre-merge code review.
 
@@ -43,7 +45,10 @@ Use SEVERITY in {CRITICAL, HIGH, MEDIUM, LOW, INFO}. Do not invent file paths â€
 NONE | - | clean | -";
 
 static LINE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)^(CRITICAL|HIGH|MEDIUM|LOW|INFO|NONE)\s*\|\s*([^|]*)\s*\|\s*([^|]+)\s*\|\s*(.*)$").expect("re")
+    Regex::new(
+        r"(?i)^(CRITICAL|HIGH|MEDIUM|LOW|INFO|NONE)\s*\|\s*([^|]*)\s*\|\s*([^|]+)\s*\|\s*(.*)$",
+    )
+    .expect("re")
 });
 
 #[derive(Debug, Clone, Deserialize)]
@@ -58,8 +63,12 @@ struct Input {
     max_diff_chars: usize,
 }
 
-fn default_fail_on() -> String { "high".into() }
-fn default_max_diff() -> usize { 120_000 }
+fn default_fail_on() -> String {
+    "high".into()
+}
+fn default_max_diff() -> usize {
+    120_000
+}
 
 impl Default for Input {
     fn default() -> Self {
@@ -78,11 +87,15 @@ pub struct Review;
 
 #[async_trait]
 impl Skill for Review {
-    fn name(&self) -> &str { "review" }
+    fn name(&self) -> &str {
+        "review"
+    }
     fn description(&self) -> &str {
         "Pre-merge multi-model diff review against the base branch"
     }
-    fn category(&self) -> &str { "review" }
+    fn category(&self) -> &str {
+        "review"
+    }
 
     async fn run(
         &self,
@@ -120,7 +133,7 @@ impl Skill for Review {
         let mut diff = git::diff_against(&cwd, &base, false);
         let mut truncated = false;
         if diff.len() > input.max_diff_chars {
-            let trimmed = (&diff[..input.max_diff_chars]).to_string();
+            let trimmed = diff[..input.max_diff_chars].to_string();
             let omitted = diff.len() - input.max_diff_chars;
             diff = format!("{trimmed}\n...\n[truncated {omitted} chars]");
             truncated = true;
@@ -221,8 +234,7 @@ impl Skill for Review {
             format!("BLOCKED â€” {} >= {}", blocking.len(), input.fail_on)
         };
 
-        let markdown =
-            build_markdown(&base, &branch, &files, &commits, &deduped, &model_lines);
+        let markdown = build_markdown(&base, &branch, &files, &commits, &deduped, &model_lines);
 
         Ok(SkillResult {
             ok,
@@ -286,7 +298,9 @@ fn parse_findings(text: &str) -> Vec<SkillFinding> {
         if line.is_empty() {
             continue;
         }
-        let Some(c) = LINE_RE.captures(line) else { continue };
+        let Some(c) = LINE_RE.captures(line) else {
+            continue;
+        };
         let sev_label = c[1].to_uppercase();
         if sev_label == "NONE" {
             continue;
@@ -307,7 +321,11 @@ fn parse_findings(text: &str) -> Vec<SkillFinding> {
             title,
             file_path,
             line: line_num,
-            recommendation: if fix == "-" || fix.is_empty() { None } else { Some(fix) },
+            recommendation: if fix == "-" || fix.is_empty() {
+                None
+            } else {
+                Some(fix)
+            },
             detail: None,
         });
     }
@@ -445,6 +463,9 @@ mod tests {
         assert_eq!(parse_location("-"), (None, None));
         assert_eq!(parse_location(""), (None, None));
         // Windows-style paths with a drive letter colon: still pick up a line if last colon is digits.
-        assert_eq!(parse_location("C:/x/a.rs:9"), (Some("C:/x/a.rs".into()), Some(9)));
+        assert_eq!(
+            parse_location("C:/x/a.rs:9"),
+            (Some("C:/x/a.rs".into()), Some(9))
+        );
     }
 }

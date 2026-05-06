@@ -30,7 +30,7 @@ pub enum Action {
         /// Base branch override.
         #[arg(long)]
         base: Option<String>,
-        /// Persist report under .monkey/skills/<name>/.
+        /// Persist report under `.monkey/skills/<name>/`.
         #[arg(long, default_value_t = false)]
         persist: bool,
         /// JSON-encoded input.
@@ -47,7 +47,13 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                 println!("  {:14}  {}", s.name(), s.description());
             }
         }
-        Action::Run { name, cwd, base, persist, input } => {
+        Action::Run {
+            name,
+            cwd,
+            base,
+            persist,
+            input,
+        } => {
             let ctx = SkillContext {
                 cwd: cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into())),
                 base_branch: base,
@@ -59,7 +65,11 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                 None => serde_json::json!({}),
             };
             let r = registry.run(&name, payload, &ctx).await?;
-            if let Some(md) = r.markdown { println!("{md}"); } else { println!("{}", r.summary); }
+            if let Some(md) = r.markdown {
+                println!("{md}");
+            } else {
+                println!("{}", r.summary);
+            }
             std::process::exit(if r.ok { 0 } else { 1 });
         }
     }

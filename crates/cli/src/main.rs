@@ -68,7 +68,7 @@ enum Cmd {
     /// SOC 2 audit-readiness pipeline.
     Compliance(commands::compliance::Args),
     /// Environment diagnostics.
-    Doctor,
+    Doctor(commands::doctor::Args),
     /// List available AI models.
     Models,
     /// Interactive REPL (default).
@@ -91,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
         Some(Cmd::Ship(a)) => commands::ship::run(a).await,
         Some(Cmd::Pentest(a)) => commands::pentest::run(a).await,
         Some(Cmd::Compliance(a)) => commands::compliance::run(a).await,
-        Some(Cmd::Doctor) => commands::doctor::run().await,
+        Some(Cmd::Doctor(a)) => commands::doctor::run(a).await,
         Some(Cmd::Models) => commands::models::run().await,
         Some(Cmd::Chat(a)) => commands::chat::run(a, cli.prompt).await,
         None => commands::chat::run(commands::chat::Args::default(), cli.prompt).await,
@@ -101,7 +101,9 @@ async fn main() -> anyhow::Result<()> {
 fn init_tracing() {
     use tracing_subscriber::{fmt, EnvFilter};
     let _ = fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
         .with_target(false)
         .try_init();
 }

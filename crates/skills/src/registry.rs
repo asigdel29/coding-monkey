@@ -34,7 +34,9 @@ impl std::fmt::Debug for Registry {
 impl Registry {
     /// Empty registry.
     pub fn new() -> Self {
-        Self { by_name: HashMap::new() }
+        Self {
+            by_name: HashMap::new(),
+        }
     }
 
     /// Register a skill, replacing any existing one with the same name.

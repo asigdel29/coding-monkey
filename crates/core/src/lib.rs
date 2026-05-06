@@ -25,10 +25,15 @@
 //! - [`repos`] — repo detection (stack, complexity)
 //! - [`ids`] — short prefixed IDs
 
+/// Workspace-wide error enum bubbled up via `?` from every internal crate.
 pub mod errors;
+/// Short, prefixed, time-sortable IDs for tasks, workers, and sessions.
 pub mod ids;
+/// Model registry and tier-based selector — the "right model for the job" router.
 pub mod models;
+/// Heuristic detection of a repo's tech stack and complexity from disk.
 pub mod repos;
+/// Serde data models shared across the workspace (tasks, sessions, configs).
 pub mod types;
 
 pub use errors::Error;
