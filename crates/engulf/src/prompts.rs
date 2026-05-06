@@ -14,4 +14,5 @@
 pub const SECURITY_SYSTEM: &str = "You are a security auditor. Output JSON only.";
 
 /// System prompt for the docs draft phase.
-pub const DOCS_SYSTEM: &str = "You are a senior staff engineer writing READMEs. Output Markdown only.";
+pub const DOCS_SYSTEM: &str =
+    "You are a senior staff engineer writing READMEs. Output Markdown only.";

@@ -131,7 +131,10 @@ impl TentacleStore {
             )?;
         }
         if !t.todo_path.exists() {
-            std::fs::write(&t.todo_path, format!("# Todo — {title}\n\n- [ ] First task\n"))?;
+            std::fs::write(
+                &t.todo_path,
+                format!("# Todo — {title}\n\n- [ ] First task\n"),
+            )?;
         }
         Ok(t)
     }
@@ -149,8 +152,12 @@ impl TentacleStore {
 
     /// Parse todo.md into structured items (only checkbox lines).
     pub fn todos(&self, id: &str) -> Vec<TodoItem> {
-        let Some(t) = self.get(id) else { return Vec::new() };
-        let Ok(raw) = std::fs::read_to_string(&t.todo_path) else { return Vec::new() };
+        let Some(t) = self.get(id) else {
+            return Vec::new();
+        };
+        let Ok(raw) = std::fs::read_to_string(&t.todo_path) else {
+            return Vec::new();
+        };
         let mut out = Vec::new();
         for (i, line) in raw.lines().enumerate() {
             if let Some(c) = TODO_RE.captures(line) {
@@ -166,12 +173,20 @@ impl TentacleStore {
 
     /// Toggle the checkbox at `line`. No-op if the line isn't a checkbox.
     pub fn toggle_todo(&self, id: &str, line: usize) -> Vec<TodoItem> {
-        let Some(t) = self.get(id) else { return Vec::new() };
-        let Ok(raw) = std::fs::read_to_string(&t.todo_path) else { return Vec::new() };
+        let Some(t) = self.get(id) else {
+            return Vec::new();
+        };
+        let Ok(raw) = std::fs::read_to_string(&t.todo_path) else {
+            return Vec::new();
+        };
         let mut lines: Vec<String> = raw.split('\n').map(|s| s.to_string()).collect();
         if line < lines.len() {
             if let Some(c) = TODO_RE.captures(&lines[line]) {
-                let next = if c[1].eq_ignore_ascii_case("x") { ' ' } else { 'x' };
+                let next = if c[1].eq_ignore_ascii_case("x") {
+                    ' '
+                } else {
+                    'x'
+                };
                 let new = format!("- [{}] {}", next, &c[2]);
                 lines[line] = TODO_RE.replace(&lines[line], new.as_str()).to_string();
                 let _ = std::fs::write(&t.todo_path, lines.join("\n"));
@@ -182,7 +197,9 @@ impl TentacleStore {
 
     /// Read CONTEXT.md, returning an empty string if missing.
     pub fn read_context(&self, id: &str) -> String {
-        let Some(t) = self.get(id) else { return String::new() };
+        let Some(t) = self.get(id) else {
+            return String::new();
+        };
         std::fs::read_to_string(&t.context_path).unwrap_or_default()
     }
 

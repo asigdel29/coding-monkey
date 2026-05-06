@@ -38,6 +38,8 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
             },
         )
         .await?;
-    if let Some(md) = r.markdown { println!("{md}"); }
+    if let Some(md) = r.markdown {
+        println!("{md}");
+    }
     std::process::exit(if r.ok { 0 } else { 1 });
 }

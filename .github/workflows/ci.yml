@@ -78,9 +78,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # rust-toolchain.toml pins channel = "1.88". The dtolnay action
+      # honors that file, so the `targets:` field on a different channel
+      # alias is silently ignored. Add the wasm32 target via rustup
+      # explicitly against the resolved toolchain instead.
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
+      - run: rustup target add wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - run: cargo build -p monkey-web --target wasm32-unknown-unknown --locked
 

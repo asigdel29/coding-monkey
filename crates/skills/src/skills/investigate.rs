@@ -28,7 +28,9 @@ use std::process::Command;
 use std::time::Instant;
 
 use crate::llm::{LLMClient, LLMRequest, LLMUnavailableError};
-use crate::types::{merge_usage, Provider, Severity, Skill, SkillContext, SkillFinding, SkillResult};
+use crate::types::{
+    merge_usage, Provider, Severity, Skill, SkillContext, SkillFinding, SkillResult,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 struct Input {
@@ -43,9 +45,15 @@ struct Input {
     max_escalations: u8,
 }
 
-fn default_max_snippets() -> usize { 8 }
-fn default_snippet_lines() -> usize { 120 }
-fn default_max_escalations() -> u8 { 2 }
+fn default_max_snippets() -> usize {
+    8
+}
+fn default_snippet_lines() -> usize {
+    120
+}
+fn default_max_escalations() -> u8 {
+    2
+}
 
 #[derive(Debug, Clone, Copy, Serialize)]
 enum Verdict {
@@ -102,11 +110,15 @@ pub struct Investigate;
 
 #[async_trait]
 impl Skill for Investigate {
-    fn name(&self) -> &str { "investigate" }
+    fn name(&self) -> &str {
+        "investigate"
+    }
     fn description(&self) -> &str {
         "Four-phase root-cause debugging with model-tier escalation"
     }
-    fn category(&self) -> &str { "debug" }
+    fn category(&self) -> &str {
+        "debug"
+    }
 
     async fn run(
         &self,
@@ -120,12 +132,8 @@ impl Skill for Investigate {
             return Err(anyhow::anyhow!("symptom must be at least 3 chars"));
         }
 
-        let candidates = pick_candidate_files(
-            &ctx.cwd,
-            &input.symptom,
-            &input.hints,
-            input.max_snippets,
-        );
+        let candidates =
+            pick_candidate_files(&ctx.cwd, &input.symptom, &input.hints, input.max_snippets);
         let snippets = build_snippet_section(&ctx.cwd, &candidates, input.snippet_lines);
 
         let llm = LLMClient::new(ctx.provider.unwrap_or(Provider::Anthropic));
@@ -200,10 +208,7 @@ impl Skill for Investigate {
             }
         }
 
-        let last_output = transcripts
-            .last()
-            .map(|t| t.2.clone())
-            .unwrap_or_default();
+        let last_output = transcripts.last().map(|t| t.2.clone()).unwrap_or_default();
         let verdict = extract_verdict(&last_output);
 
         let mut findings = Vec::new();
@@ -336,20 +341,21 @@ fn ripgrep(cwd: &Path, query: &str, max_files: usize) -> Vec<String> {
 fn build_snippet_section(cwd: &Path, files: &[PathBuf], lines: usize) -> String {
     let mut blocks = Vec::new();
     for f in files {
-        let abs = if f.is_absolute() { f.clone() } else { cwd.join(f) };
-        let Some(body) = safe_read(&abs, lines) else { continue };
+        let abs = if f.is_absolute() {
+            f.clone()
+        } else {
+            cwd.join(f)
+        };
+        let Some(body) = safe_read(&abs, lines) else {
+            continue;
+        };
         let rel = abs.strip_prefix(cwd).unwrap_or(&abs);
         blocks.push(format!("### {}\n```\n{body}\n```", rel.display()));
     }
     blocks.join("\n\n")
 }
 
-fn pick_candidate_files(
-    cwd: &Path,
-    symptom: &str,
-    hints: &[String],
-    max: usize,
-) -> Vec<PathBuf> {
+fn pick_candidate_files(cwd: &Path, symptom: &str, hints: &[String], max: usize) -> Vec<PathBuf> {
     let mut files: BTreeSet<String> = hints.iter().cloned().collect();
     static TOKEN_RE: Lazy<Regex> =
         Lazy::new(|| Regex::new(r"[A-Za-z_][A-Za-z0-9_]{3,}").expect("re"));

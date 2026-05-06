@@ -12,22 +12,32 @@
 
 use uuid::Uuid;
 
-/// Generate a short prefixed identifier. Output shape: `<prefix>_<12 hex>`.
+/// Generate a short prefixed identifier. Output shape: `<prefix>_<20 hex>`.
 ///
 /// Time-ordered (uuid v7) so IDs sort lexicographically by creation time —
-/// useful for log scanning without a separate timestamp column.
+/// useful for log scanning without a separate timestamp column. The 20-hex
+/// suffix is 12 chars of millisecond timestamp + 8 chars of random, which
+/// makes within-millisecond collisions vanishingly rare while keeping IDs
+/// short.
 ///
 /// # Examples
 /// ```
 /// use monkey_core::ids::generate_id;
 /// let id = generate_id("task");
 /// assert!(id.starts_with("task_"));
-/// assert_eq!(id.len(), "task_".len() + 12);
+/// assert_eq!(id.len(), "task_".len() + 20);
 /// ```
 pub fn generate_id(prefix: &str) -> String {
     let uuid = Uuid::now_v7();
     let hex = uuid.simple().to_string();
-    format!("{}_{}", prefix, &hex[..12])
+    // uuid v7 layout (32 hex chars):
+    //   [0..12]  unix_ts_ms       — preserved up front for sortability
+    //   [12]     version nibble ('7')
+    //   [13..16] rand_a (12 bits)
+    //   [16]     variant nibble
+    //   [17..32] rand_b (62 bits)
+    // Pull 8 chars from rand_b to break ties within the same ms.
+    format!("{}_{}{}", prefix, &hex[..12], &hex[20..28])
 }
 
 #[cfg(test)]

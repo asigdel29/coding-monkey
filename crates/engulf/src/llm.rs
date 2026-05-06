@@ -67,8 +67,9 @@ pub async fn complete(req: PromptRequest) -> anyhow::Result<String> {
         None => match req.provider {
             Provider::Anthropic => std::env::var("ANTHROPIC_API_KEY")
                 .map_err(|_| anyhow!("ANTHROPIC_API_KEY not set"))?,
-            Provider::Openai => std::env::var("OPENAI_API_KEY")
-                .map_err(|_| anyhow!("OPENAI_API_KEY not set"))?,
+            Provider::Openai => {
+                std::env::var("OPENAI_API_KEY").map_err(|_| anyhow!("OPENAI_API_KEY not set"))?
+            }
         },
     };
 
@@ -108,7 +109,7 @@ async fn anthropic(
     let status = resp.status();
     let raw = resp.text().await.context("read anthropic body")?;
     if !status.is_success() {
-        return Err(anyhow!("anthropic {}: {}", status, raw));
+        return Err(anyhow!("anthropic {status}: {raw}"));
     }
     let parsed: AnthropicResp =
         serde_json::from_str(&raw).with_context(|| format!("anthropic decode: {raw}"))?;
@@ -161,7 +162,7 @@ async fn openai(
     let status = resp.status();
     let raw = resp.text().await.context("read openai body")?;
     if !status.is_success() {
-        return Err(anyhow!("openai {}: {}", status, raw));
+        return Err(anyhow!("openai {status}: {raw}"));
     }
     let parsed: OpenAIResp =
         serde_json::from_str(&raw).with_context(|| format!("openai decode: {raw}"))?;
@@ -196,14 +197,14 @@ struct OpenAIMessage {
 pub fn strip_json_fences(s: &str) -> &str {
     let s = s.trim();
     let candidates = [
-        s.strip_prefix("```json").and_then(|x| x.strip_suffix("```")),
-        s.strip_prefix("```JSON").and_then(|x| x.strip_suffix("```")),
+        s.strip_prefix("```json")
+            .and_then(|x| x.strip_suffix("```")),
+        s.strip_prefix("```JSON")
+            .and_then(|x| x.strip_suffix("```")),
         s.strip_prefix("```").and_then(|x| x.strip_suffix("```")),
     ];
-    for c in candidates {
-        if let Some(stripped) = c {
-            return stripped.trim();
-        }
+    if let Some(stripped) = candidates.into_iter().flatten().next() {
+        return stripped.trim();
     }
     s
 }

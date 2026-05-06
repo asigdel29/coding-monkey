@@ -70,9 +70,10 @@ pub fn write_vault(
 
     let obsidian = vault_path.join(".obsidian");
     std::fs::create_dir_all(&obsidian)?;
-    let app_json =
-        serde_json::to_string_pretty(&serde_json::json!({ "defaultViewMode": "preview", "livePreview": true }))
-            .expect("valid json");
+    let app_json = serde_json::to_string_pretty(
+        &serde_json::json!({ "defaultViewMode": "preview", "livePreview": true }),
+    )
+    .expect("valid json");
     std::fs::write(obsidian.join("app.json"), app_json)?;
 
     Ok(VaultWriteResult {
@@ -86,6 +87,7 @@ pub fn write_vault(
 /// Owned key/value pair used to render YAML front-matter. Strings get
 /// quoted (with `"` escaped); bools and integers go through unquoted;
 /// arrays render as `key:\n  - …`.
+#[allow(dead_code)]
 enum Field {
     Str(String),
     Int(i64),
@@ -171,20 +173,32 @@ fn build_home_note(scan: &ScanResult) -> String {
     s.push_str(&format!("- **Language:** {}\n", scan.tech_stack.language));
     s.push_str(&format!(
         "- **Package Manager:** {}\n",
-        scan.tech_stack.package_manager.as_deref().unwrap_or("unknown")
+        scan.tech_stack
+            .package_manager
+            .as_deref()
+            .unwrap_or("unknown")
     ));
     s.push_str(&format!(
         "- **Deploy Target:** {}\n",
-        scan.tech_stack.deploy_target.as_deref().unwrap_or("unknown")
+        scan.tech_stack
+            .deploy_target
+            .as_deref()
+            .unwrap_or("unknown")
     ));
     s.push_str(&format!(
         "- **Git Branch:** {}\n",
         scan.git_info.branch.as_deref().unwrap_or("unknown")
     ));
     s.push_str(&format!("- **Files:** {}\n", scan.files.len()));
-    s.push_str(&format!("- **Dependencies:** {}\n", scan.dependencies.len()));
+    s.push_str(&format!(
+        "- **Dependencies:** {}\n",
+        scan.dependencies.len()
+    ));
     s.push_str(&format!("- **API Routes:** {}\n", scan.api_routes.len()));
-    s.push_str(&format!("- **Env Vars:** {}\n\n---\n\n", scan.env_vars.len()));
+    s.push_str(&format!(
+        "- **Env Vars:** {}\n\n---\n\n",
+        scan.env_vars.len()
+    ));
 
     s.push_str("## Recent Activity\n\n");
     if scan.git_info.recent_commits.is_empty() {
@@ -203,7 +217,10 @@ fn build_architecture_note(scan: &ScanResult) -> String {
     let mut s = frontmatter(&[
         ("title", Field::Str("Architecture".into())),
         ("created", Field::Str(now)),
-        ("tags", Field::List(vec!["monkey".into(), "architecture".into()])),
+        (
+            "tags",
+            Field::List(vec!["monkey".into(), "architecture".into()]),
+        ),
         ("type", Field::Str("architecture".into())),
         ("links", Field::List(vec!["[[Home]]".into()])),
     ]);
@@ -217,11 +234,17 @@ fn build_architecture_note(scan: &ScanResult) -> String {
     s.push_str(&format!("Runtime:   {}\n", "Node.js"));
     s.push_str(&format!(
         "Testing:   {}\n",
-        scan.tech_stack.test_framework.as_deref().unwrap_or("unknown")
+        scan.tech_stack
+            .test_framework
+            .as_deref()
+            .unwrap_or("unknown")
     ));
     s.push_str(&format!(
         "Deploy:    {}\n```\n\n---\n\n",
-        scan.tech_stack.deploy_target.as_deref().unwrap_or("unknown")
+        scan.tech_stack
+            .deploy_target
+            .as_deref()
+            .unwrap_or("unknown")
     ));
 
     // Top directories with file counts.
@@ -289,9 +312,7 @@ fn build_api_note(scan: &ScanResult) -> String {
         scan.api_routes.len()
     ));
     if scan.api_routes.is_empty() {
-        s.push_str(
-            "_No API routes detected automatically. Check src/app/api/ or src/routes/_\n",
-        );
+        s.push_str("_No API routes detected automatically. Check src/app/api/ or src/routes/_\n");
     } else {
         s.push_str("| Method | Path | File |\n|--------|------|------|\n");
         for r in &scan.api_routes {
@@ -305,7 +326,9 @@ fn build_api_note(scan: &ScanResult) -> String {
     if scan.env_vars.is_empty() {
         s.push_str("_No environment variables detected_\n");
     } else {
-        s.push_str("| Variable | Has Example | Description |\n|----------|------------|-------------|\n");
+        s.push_str(
+            "| Variable | Has Example | Description |\n|----------|------------|-------------|\n",
+        );
         for e in &scan.env_vars {
             s.push_str(&format!(
                 "| `{}` | {} | {} |\n",
@@ -329,7 +352,10 @@ fn build_security_note(audit: &SecurityAuditResult) -> String {
     let mut s = frontmatter(&[
         ("title", Field::Str("Security".into())),
         ("created", Field::Str(now)),
-        ("tags", Field::List(vec!["monkey".into(), "security".into()])),
+        (
+            "tags",
+            Field::List(vec!["monkey".into(), "security".into()]),
+        ),
         ("type", Field::Str("security".into())),
         ("criticalCount", Field::Int(audit.critical_count as i64)),
         ("highCount", Field::Int(audit.high_count as i64)),
@@ -368,7 +394,10 @@ fn build_deployment_note(runbook: &DeploymentRunbook) -> String {
     let mut s = frontmatter(&[
         ("title", Field::Str("Deployment".into())),
         ("created", Field::Str(now)),
-        ("tags", Field::List(vec!["monkey".into(), "deployment".into()])),
+        (
+            "tags",
+            Field::List(vec!["monkey".into(), "deployment".into()]),
+        ),
         ("type", Field::Str("deployment".into())),
         ("platform", Field::Str(runbook.platform.clone())),
         ("estimatedTime", Field::Str(runbook.estimated_time.clone())),
@@ -379,7 +408,11 @@ fn build_deployment_note(runbook: &DeploymentRunbook) -> String {
     ));
     s.push_str("| # | Step | Type |\n|---|------|------|\n");
     for (i, step) in runbook.steps.iter().enumerate() {
-        let kind = if step.is_manual { "manual" } else { "automated" };
+        let kind = if step.is_manual {
+            "manual"
+        } else {
+            "automated"
+        };
         s.push_str(&format!("| {} | {} | {} |\n", i + 1, step.title, kind));
     }
     s.push_str("\n---\n\n## Required Environment Variables\n\n");
@@ -406,7 +439,10 @@ fn build_dependencies_note(scan: &ScanResult) -> String {
     let mut s = frontmatter(&[
         ("title", Field::Str("Dependencies".into())),
         ("created", Field::Str(now)),
-        ("tags", Field::List(vec!["monkey".into(), "dependencies".into()])),
+        (
+            "tags",
+            Field::List(vec!["monkey".into(), "dependencies".into()]),
+        ),
         ("type", Field::Str("dependencies".into())),
         ("totalCount", Field::Int(scan.dependencies.len() as i64)),
     ]);
@@ -428,10 +464,7 @@ fn build_dependencies_note(scan: &ScanResult) -> String {
         .take(20)
         .collect();
 
-    s.push_str(&format!(
-        "## Production Dependencies ({})\n\n",
-        prod.len()
-    ));
+    s.push_str(&format!("## Production Dependencies ({})\n\n", prod.len()));
     if prod.is_empty() {
         s.push_str("_None_\n\n");
     } else {
@@ -446,10 +479,7 @@ fn build_dependencies_note(scan: &ScanResult) -> String {
     }
     s.push_str("---\n\n");
 
-    s.push_str(&format!(
-        "## Dev Dependencies ({})\n\n",
-        dev.len()
-    ));
+    s.push_str(&format!("## Dev Dependencies ({})\n\n", dev.len()));
     if dev.is_empty() {
         s.push_str("_None_\n\n");
     } else {
@@ -490,19 +520,21 @@ fn build_onboarding_note(scan: &ScanResult) -> String {
     let mut s = frontmatter(&[
         ("title", Field::Str("Onboarding".into())),
         ("created", Field::Str(now)),
-        ("tags", Field::List(vec!["monkey".into(), "onboarding".into()])),
+        (
+            "tags",
+            Field::List(vec!["monkey".into(), "onboarding".into()]),
+        ),
         ("type", Field::Str("onboarding".into())),
     ]);
     s.push_str(&format!(
         "# New Developer Onboarding Guide\n\nWelcome to the **{project}** project!\n\n---\n\n## Prerequisites\n\n"
     ));
-    let runtime = if scan.tech_stack.language == "TypeScript"
-        || scan.tech_stack.language == "JavaScript"
-    {
-        "Node.js ≥ 20".to_string()
-    } else {
-        scan.tech_stack.language.clone()
-    };
+    let runtime =
+        if scan.tech_stack.language == "TypeScript" || scan.tech_stack.language == "JavaScript" {
+            "Node.js ≥ 20".to_string()
+        } else {
+            scan.tech_stack.language.clone()
+        };
     s.push_str(&format!("- **Runtime:** {runtime}\n"));
     s.push_str(&format!("- **Package Manager:** {pm}\n"));
     if let Some(t) = &scan.tech_stack.deploy_target {
@@ -517,7 +549,9 @@ fn build_onboarding_note(scan: &ScanResult) -> String {
     ));
     s.push_str(&format!("# 2. Install dependencies\n{install_cmd}\n\n"));
     s.push_str("# 3. Set up environment variables\ncp .env.example .env\n# Edit .env and fill in real values (see [[API]] for descriptions)\n\n");
-    s.push_str(&format!("# 4. Start the dev server\n{dev_cmd}\n```\n\n---\n\n"));
+    s.push_str(&format!(
+        "# 4. Start the dev server\n{dev_cmd}\n```\n\n---\n\n"
+    ));
 
     s.push_str("## Environment Variables\n\n");
     if scan.env_vars.is_empty() {
@@ -570,7 +604,10 @@ fn build_codebase_map_note(scan: &ScanResult) -> String {
     let mut s = frontmatter(&[
         ("title", Field::Str("Codebase Map".into())),
         ("created", Field::Str(now)),
-        ("tags", Field::List(vec!["monkey".into(), "codebase".into()])),
+        (
+            "tags",
+            Field::List(vec!["monkey".into(), "codebase".into()]),
+        ),
         ("type", Field::Str("codebase".into())),
         ("totalFiles", Field::Int(scan.files.len() as i64)),
     ]);
@@ -597,10 +634,7 @@ fn build_codebase_map_note(scan: &ScanResult) -> String {
                 subdirs.insert(format!("{}/{}", parts[0], parts[1]));
             }
         }
-        s.push_str(&format!(
-            "### `{dir}/`\n{} files\n\n",
-            files.len()
-        ));
+        s.push_str(&format!("### `{dir}/`\n{} files\n\n", files.len()));
         for sd in subdirs.iter().take(8) {
             s.push_str(&format!("- `{sd}`\n"));
         }
@@ -628,9 +662,7 @@ fn build_codebase_map_note(scan: &ScanResult) -> String {
 mod tests {
     use super::*;
     use crate::deployer::DeploymentRunbook;
-    use crate::scanner::{
-        DepKind, DepSource, DependencyInfo, FileInfo, ScanResult, TechStackInfo,
-    };
+    use crate::scanner::{DepKind, DepSource, DependencyInfo, FileInfo, ScanResult, TechStackInfo};
     use crate::security::SecurityAuditResult;
     use tempfile::tempdir;
 

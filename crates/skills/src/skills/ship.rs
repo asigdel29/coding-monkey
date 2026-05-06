@@ -45,9 +45,15 @@ struct Input {
     fail_on: String,
 }
 
-fn default_true() -> bool { true }
-fn default_bump() -> String { "patch".into() }
-fn default_fail_on() -> String { "high".into() }
+fn default_true() -> bool {
+    true
+}
+fn default_bump() -> String {
+    "patch".into()
+}
+fn default_fail_on() -> String {
+    "high".into()
+}
 
 #[derive(Debug, Clone)]
 struct Stage {
@@ -63,12 +69,18 @@ pub struct Ship;
 
 #[async_trait]
 impl Skill for Ship {
-    fn name(&self) -> &str { "ship" }
+    fn name(&self) -> &str {
+        "ship"
+    }
     fn description(&self) -> &str {
         "Ship gauntlet: typecheck → review → cso → pentest → bump → push"
     }
-    fn category(&self) -> &str { "release" }
-    fn composes(&self) -> &[&str] { &["review", "cso", "pentest"] }
+    fn category(&self) -> &str {
+        "release"
+    }
+    fn composes(&self) -> &[&str] {
+        &["review", "cso", "pentest"]
+    }
 
     async fn run(
         &self,
@@ -76,18 +88,17 @@ impl Skill for Ship {
         ctx: &SkillContext,
     ) -> anyhow::Result<SkillResult> {
         let start = Instant::now();
-        let input: Input = serde_json::from_value(input)
-            .unwrap_or(Input {
-                bump: default_bump(),
-                skip_build: false,
-                review: true,
-                audit: true,
-                pentest: true,
-                pentest_target: None,
-                push: true,
-                open_pr: false,
-                fail_on: default_fail_on(),
-            });
+        let input: Input = serde_json::from_value(input).unwrap_or(Input {
+            bump: default_bump(),
+            skip_build: false,
+            review: true,
+            audit: true,
+            pentest: true,
+            pentest_target: None,
+            push: true,
+            open_pr: false,
+            fail_on: default_fail_on(),
+        });
 
         let cwd = git::repo_root(&ctx.cwd)?;
         let branch = git::current_branch(&cwd)?;
@@ -142,7 +153,14 @@ impl Skill for Ship {
                 recommendation: None,
                 detail: None,
             });
-            return Ok(finalize(start, &branch, &base, &stages, findings, serde_json::Value::Null));
+            return Ok(finalize(
+                start,
+                &branch,
+                &base,
+                &stages,
+                findings,
+                serde_json::Value::Null,
+            ));
         }
 
         // Stage 2: install + typecheck (skippable).
@@ -157,13 +175,7 @@ impl Skill for Ship {
             );
             push_stage(&mut stages, install);
 
-            let typecheck = run_shell(
-                "typecheck",
-                &pm,
-                &["run", "-r", "typecheck"],
-                &cwd,
-                true,
-            );
+            let typecheck = run_shell("typecheck", &pm, &["run", "-r", "typecheck"], &cwd, true);
             // typecheck script not present? swallow.
             if !typecheck.ok
                 && (typecheck.detail.to_lowercase().contains("missing script")
@@ -491,7 +503,10 @@ impl Skill for Ship {
             "ahead": ahead.len(),
         });
         if input.open_pr {
-            let subject = ahead.first().cloned().unwrap_or_else(|| format!("Ship {branch}"));
+            let subject = ahead
+                .first()
+                .cloned()
+                .unwrap_or_else(|| format!("Ship {branch}"));
             let subject: String = subject.chars().take(70).collect();
             let body = "Automated ship via `monkey ship`.";
             let pr = Command::new("gh")
@@ -587,10 +602,7 @@ fn finalize(
             .unwrap_or("unknown");
         format!("BLOCKED at {failed}")
     } else {
-        format!(
-            "shipped {branch} ({} stages, base {base})",
-            stages.len()
-        )
+        format!("shipped {branch} ({} stages, base {base})", stages.len())
     };
     SkillResult {
         ok: !blocked,
@@ -604,13 +616,7 @@ fn finalize(
     }
 }
 
-fn run_shell(
-    name: &'static str,
-    cmd: &str,
-    args: &[&str],
-    cwd: &Path,
-    blocking: bool,
-) -> Stage {
+fn run_shell(name: &'static str, cmd: &str, args: &[&str], cwd: &Path, blocking: bool) -> Stage {
     let r = Command::new(cmd).current_dir(cwd).args(args).output();
     match r {
         Ok(o) if o.status.success() => Stage {
@@ -676,10 +682,27 @@ mod tests {
     #[test]
     fn finalize_marks_blocked_when_a_blocking_stage_failed() {
         let stages = vec![
-            Stage { name: "a", ok: true, blocking: true, detail: "ok".into() },
-            Stage { name: "b", ok: false, blocking: true, detail: "boom".into() },
+            Stage {
+                name: "a",
+                ok: true,
+                blocking: true,
+                detail: "ok".into(),
+            },
+            Stage {
+                name: "b",
+                ok: false,
+                blocking: true,
+                detail: "boom".into(),
+            },
         ];
-        let r = finalize(Instant::now(), "feat", "main", &stages, vec![], serde_json::Value::Null);
+        let r = finalize(
+            Instant::now(),
+            "feat",
+            "main",
+            &stages,
+            vec![],
+            serde_json::Value::Null,
+        );
         assert!(r.blocked);
         assert!(!r.ok);
         assert!(r.summary.starts_with("BLOCKED at b"));
@@ -688,10 +711,27 @@ mod tests {
     #[test]
     fn finalize_reports_shipped_when_all_stages_pass() {
         let stages = vec![
-            Stage { name: "a", ok: true, blocking: true, detail: "ok".into() },
-            Stage { name: "b", ok: true, blocking: false, detail: "skipped".into() },
+            Stage {
+                name: "a",
+                ok: true,
+                blocking: true,
+                detail: "ok".into(),
+            },
+            Stage {
+                name: "b",
+                ok: true,
+                blocking: false,
+                detail: "skipped".into(),
+            },
         ];
-        let r = finalize(Instant::now(), "feat", "main", &stages, vec![], serde_json::Value::Null);
+        let r = finalize(
+            Instant::now(),
+            "feat",
+            "main",
+            &stages,
+            vec![],
+            serde_json::Value::Null,
+        );
         assert!(r.ok);
         assert!(!r.blocked);
         assert!(r.summary.starts_with("shipped feat"));

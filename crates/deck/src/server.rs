@@ -138,6 +138,9 @@ impl DeckHandle {
 #[derive(Debug)]
 struct AppState {
     cwd: PathBuf,
+    // Configured agent name, kept on AppState for telemetry / future
+    // routing even though spawning currently goes through `AgentKind::Auto`.
+    #[allow(dead_code)]
     agent: String,
     agent_args: Vec<String>,
     token: String,
@@ -216,7 +219,11 @@ pub async fn start_deck(opts: DeckOpts) -> anyhow::Result<DeckHandle> {
         agent_args: opts.agent_args.clone(),
         token: token.clone(),
         expires_at_ms,
-        scheme: if use_tls { "https".into() } else { "http".into() },
+        scheme: if use_tls {
+            "https".into()
+        } else {
+            "http".into()
+        },
         bound_host: host.clone(),
         bound_port: opts.port,
         rate: RateLimit {
@@ -234,10 +241,7 @@ pub async fn start_deck(opts: DeckOpts) -> anyhow::Result<DeckHandle> {
         .route("/ws", get(ws_upgrade))
         .with_state(state.clone());
     if let Some(dir) = opts.static_dir.as_ref() {
-        app = app.nest_service(
-            "/static",
-            tower_http::services::fs::ServeDir::new(dir),
-        );
+        app = app.nest_service("/static", tower_http::services::fs::ServeDir::new(dir));
     }
 
     let bind: SocketAddr = format!("{host}:{}", opts.port)
@@ -275,10 +279,7 @@ pub async fn start_deck(opts: DeckOpts) -> anyhow::Result<DeckHandle> {
 
 // ─── HTTP handlers ──────────────────────────────────────────────────────────
 
-async fn serve_index(
-    State(state): State<Arc<AppState>>,
-    Query(q): Query<IndexQuery>,
-) -> Response {
+async fn serve_index(State(state): State<Arc<AppState>>, Query(q): Query<IndexQuery>) -> Response {
     if expired(&state) {
         return text_response(
             StatusCode::UNAUTHORIZED,
@@ -327,12 +328,12 @@ fn text_response(status: StatusCode, body: &str, state: &AppState) -> Response {
 }
 
 fn apply_security_headers(headers: &mut HeaderMap, state: &AppState) {
-    headers.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
-    headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
     headers.insert(
-        "referrer-policy",
-        HeaderValue::from_static("no-referrer"),
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
     );
+    headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
+    headers.insert("referrer-policy", HeaderValue::from_static("no-referrer"));
     headers.insert(
         "permissions-policy",
         HeaderValue::from_static("geolocation=(), microphone=(), camera=()"),
@@ -389,7 +390,12 @@ async fn ws_upgrade(
     ws: WebSocketUpgrade,
 ) -> Response {
     if expired(&state) {
-        audit(&state, "ws.auth.fail", serde_json::json!({ "reason": "session-expired" })).await;
+        audit(
+            &state,
+            "ws.auth.fail",
+            serde_json::json!({ "reason": "session-expired" }),
+        )
+        .await;
         return (StatusCode::UNAUTHORIZED, "expired").into_response();
     }
     if !origin_is_allowed(&headers, &state) {
@@ -417,7 +423,10 @@ fn origin_is_allowed(headers: &HeaderMap, state: &AppState) -> bool {
         return true;
     };
     let allowed = [
-        format!("{}://{}:{}", state.scheme, state.bound_host, state.bound_port),
+        format!(
+            "{}://{}:{}",
+            state.scheme, state.bound_host, state.bound_port
+        ),
         format!("{}://localhost:{}", state.scheme, state.bound_port),
         format!("{}://127.0.0.1:{}", state.scheme, state.bound_port),
     ];
@@ -429,7 +438,6 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
     let mut authed = false;
     let mut owned: Vec<String> = Vec::new();
     let mut bucket = TokenBucket::new(state.rate);
-    let mut rate_logged = false;
 
     audit(&state, "ws.connect", serde_json::json!({})).await;
 
@@ -437,12 +445,22 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
 
     while let Some(frame) = receiver.next().await {
         if !authed && Instant::now() > auth_deadline {
-            audit(&state, "ws.auth.fail", serde_json::json!({ "reason": "timeout" })).await;
+            audit(
+                &state,
+                "ws.auth.fail",
+                serde_json::json!({ "reason": "timeout" }),
+            )
+            .await;
             let _ = sender.send(Message::Close(None)).await;
             break;
         }
         if expired(&state) {
-            audit(&state, "ws.disconnect", serde_json::json!({ "reason": "session-expired" })).await;
+            audit(
+                &state,
+                "ws.disconnect",
+                serde_json::json!({ "reason": "session-expired" }),
+            )
+            .await;
             let _ = sender.send(Message::Close(None)).await;
             break;
         }
@@ -462,10 +480,7 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
         };
 
         if !bucket.consume() {
-            if !rate_logged {
-                audit(&state, "ws.rate-limit", serde_json::json!({})).await;
-                rate_logged = true;
-            }
+            audit(&state, "ws.rate-limit", serde_json::json!({})).await;
             let _ = sender.send(Message::Close(None)).await;
             break;
         }
@@ -473,7 +488,12 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
         let raw: serde_json::Value = match serde_json::from_str(&text) {
             Ok(v) => v,
             Err(_) => {
-                audit(&state, "ws.auth.fail", serde_json::json!({ "reason": "bad-json" })).await;
+                audit(
+                    &state,
+                    "ws.auth.fail",
+                    serde_json::json!({ "reason": "bad-json" }),
+                )
+                .await;
                 continue;
             }
         };
@@ -501,7 +521,12 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
                 continue;
             };
             if !constant_time_eq(token.as_bytes(), state.token.as_bytes()) {
-                audit(&state, "ws.auth.fail", serde_json::json!({ "reason": "bad-token" })).await;
+                audit(
+                    &state,
+                    "ws.auth.fail",
+                    serde_json::json!({ "reason": "bad-token" }),
+                )
+                .await;
                 let _ = sender.send(Message::Close(None)).await;
                 break;
             }
@@ -560,7 +585,12 @@ async fn dispatch(
         WsMsg::TentacleCreate { title, context } => {
             let body = context.clone().unwrap_or_default();
             let t = state.tentacles.create(title, &body)?;
-            audit(state, "tentacle.create", serde_json::json!({ "id": t.id, "title": t.title })).await;
+            audit(
+                state,
+                "tentacle.create",
+                serde_json::json!({ "id": t.id, "title": t.title }),
+            )
+            .await;
             send_json(
                 sender,
                 serde_json::json!({
@@ -574,7 +604,11 @@ async fn dispatch(
         WsMsg::TentacleRemove { id } => {
             state.tentacles.remove(id)?;
             audit(state, "tentacle.remove", serde_json::json!({ "id": id })).await;
-            send_json(sender, serde_json::json!({ "type": "tentacle.removed", "id": id })).await?;
+            send_json(
+                sender,
+                serde_json::json!({ "type": "tentacle.removed", "id": id }),
+            )
+            .await?;
         }
         WsMsg::TentacleTodos { id } => {
             send_json(
@@ -589,7 +623,12 @@ async fn dispatch(
         }
         WsMsg::TentacleToggle { id, line } => {
             let todos = state.tentacles.toggle_todo(id, *line);
-            audit(state, "tentacle.toggle", serde_json::json!({ "id": id, "line": line })).await;
+            audit(
+                state,
+                "tentacle.toggle",
+                serde_json::json!({ "id": id, "line": line }),
+            )
+            .await;
             send_json(
                 sender,
                 serde_json::json!({ "type": "tentacle.todos", "id": id, "todos": todos }),
@@ -653,7 +692,11 @@ async fn dispatch(
             .await;
             let id = result.terminal.id.clone();
             let binary = result.binary.clone();
-            state.terminals.lock().await.insert(id.clone(), result.terminal);
+            state
+                .terminals
+                .lock()
+                .await
+                .insert(id.clone(), result.terminal);
             send_json(
                 sender,
                 serde_json::json!({
@@ -723,14 +766,15 @@ async fn audit(state: &AppState, event_label: &str, fields: serde_json::Value) {
             AuditEventType::AgentSpawn
         }
         "tentacle.create" | "tentacle.remove" | "tentacle.toggle" => AuditEventType::Note,
-        "agent.spawn" | "agent.exit" | "term.input" | "term.kill" => {
-            AuditEventType::AgentSpawn
-        }
+        "agent.spawn" | "agent.exit" | "term.input" | "term.kill" => AuditEventType::AgentSpawn,
         _ => AuditEventType::Note,
     };
     let mut fields = fields;
     if let Some(obj) = fields.as_object_mut() {
-        obj.insert("event".into(), serde_json::Value::String(event_label.into()));
+        obj.insert(
+            "event".into(),
+            serde_json::Value::String(event_label.into()),
+        );
     }
     let _ = state.audit.lock().await.log(event_type, fields);
 }
@@ -815,7 +859,10 @@ mod tests {
 
     #[test]
     fn rate_limiter_allows_burst_then_blocks() {
-        let mut b = TokenBucket::new(RateLimit { per_sec: 1, burst: 3 });
+        let mut b = TokenBucket::new(RateLimit {
+            per_sec: 1,
+            burst: 3,
+        });
         assert!(b.consume());
         assert!(b.consume());
         assert!(b.consume());
@@ -824,7 +871,10 @@ mod tests {
 
     #[test]
     fn rate_limiter_refills_over_time() {
-        let mut b = TokenBucket::new(RateLimit { per_sec: 1000, burst: 1 });
+        let mut b = TokenBucket::new(RateLimit {
+            per_sec: 1000,
+            burst: 1,
+        });
         assert!(b.consume());
         std::thread::sleep(Duration::from_millis(20));
         assert!(b.consume());
