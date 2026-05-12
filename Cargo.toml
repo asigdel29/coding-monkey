@@ -71,7 +71,7 @@ tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 
 # PTY
-portable-pty = "0.8"
+portable-pty = "0.9"
 
 # Filesystem / paths
 walkdir = "2.5"
