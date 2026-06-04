@@ -11,6 +11,7 @@
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  initial Rust port from packages/agents/src/doctor.ts
    2026-05-06   Anubhav Sigdel  capture CLI versions, repo state, monkey scaffold
+   2026-06-03   Anubhav Sigdel  report OpenRouter key; codex-only pick_auto
 */
 
 use serde::{Deserialize, Serialize};
@@ -26,14 +27,12 @@ use crate::types::AgentKind;
 pub struct DoctorReport {
     /// Whether all required checks passed.
     pub ok: bool,
-    /// `claude --version` stdout, trimmed. `None` if not on PATH.
-    pub claude_version: Option<String>,
     /// `codex --version` stdout, trimmed. `None` if not on PATH.
     pub codex_version: Option<String>,
     /// `git --version` stdout, trimmed. `None` if not on PATH.
     pub git_version: Option<String>,
-    /// Whether `ANTHROPIC_API_KEY` is set.
-    pub anthropic_key: bool,
+    /// Whether `OPENROUTER_API_KEY` is set.
+    pub openrouter_key: bool,
     /// Whether `OPENAI_API_KEY` is set.
     pub openai_key: bool,
     /// Working directory the report was produced in.
@@ -51,10 +50,6 @@ pub struct DoctorReport {
 }
 
 impl DoctorReport {
-    /// Whether the `claude` CLI is on PATH.
-    pub fn claude_present(&self) -> bool {
-        self.claude_version.is_some()
-    }
     /// Whether the `codex` CLI is on PATH.
     pub fn codex_present(&self) -> bool {
         self.codex_version.is_some()
@@ -74,10 +69,9 @@ pub fn doctor() -> DoctorReport {
 
 /// Same as [`doctor`] but rooted at an explicit path. Exposed for tests.
 pub fn doctor_at(cwd: &Path) -> DoctorReport {
-    let claude_version = bin_version("claude");
     let codex_version = bin_version("codex");
     let git_version = bin_version("git");
-    let anthropic_key = std::env::var("ANTHROPIC_API_KEY").is_ok();
+    let openrouter_key = std::env::var("OPENROUTER_API_KEY").is_ok();
     let openai_key = std::env::var("OPENAI_API_KEY").is_ok();
 
     let in_git_repo = find_git_root(cwd).is_some();
@@ -87,14 +81,14 @@ pub fn doctor_at(cwd: &Path) -> DoctorReport {
     let repo_complexity = detected.as_ref().map(|r| r.complexity);
 
     let mut notes = Vec::new();
-    if claude_version.is_none() && codex_version.is_none() {
-        notes.push("no agent CLI on PATH (install `claude` or `codex`)".into());
+    if codex_version.is_none() {
+        notes.push("no agent CLI on PATH (install `codex` for the REPL path)".into());
     }
     if git_version.is_none() {
         notes.push("git not found — repo detection and skills will degrade".into());
     }
-    if !anthropic_key && !openai_key {
-        notes.push("no LLM API key set (export ANTHROPIC_API_KEY or OPENAI_API_KEY)".into());
+    if !openrouter_key && !openai_key {
+        notes.push("no LLM API key set (export OPENROUTER_API_KEY or OPENAI_API_KEY)".into());
     }
     if !in_git_repo {
         notes.push("cwd is not inside a git work tree — ship/review will fail".into());
@@ -103,16 +97,15 @@ pub fn doctor_at(cwd: &Path) -> DoctorReport {
         notes.push(".monkey/ not found — run `monkey init` to scaffold context".into());
     }
 
-    let ok = (claude_version.is_some() || codex_version.is_some())
-        && git_version.is_some()
-        && (anthropic_key || openai_key);
+    // The API path only needs a key + git; the codex CLI is optional and
+    // only required for the interactive REPL hand-off.
+    let ok = git_version.is_some() && (openrouter_key || openai_key);
 
     DoctorReport {
         ok,
-        claude_version,
         codex_version,
         git_version,
-        anthropic_key,
+        openrouter_key,
         openai_key,
         cwd: cwd.to_path_buf(),
         in_git_repo,
@@ -123,12 +116,10 @@ pub fn doctor_at(cwd: &Path) -> DoctorReport {
     }
 }
 
-/// Resolve `AgentKind::Auto` into a concrete kind, preferring `claude`
-/// over `codex`. Returns `None` if neither is installed.
+/// Resolve `AgentKind::Auto` into a concrete kind. Returns the `codex`
+/// CLI if it is installed, otherwise `None`.
 pub fn pick_auto(report: &DoctorReport) -> Option<AgentKind> {
-    if report.claude_present() {
-        Some(AgentKind::Claude)
-    } else if report.codex_present() {
+    if report.codex_present() {
         Some(AgentKind::Codex)
     } else {
         None
@@ -170,10 +161,9 @@ mod tests {
     fn empty_report() -> DoctorReport {
         DoctorReport {
             ok: false,
-            claude_version: None,
             codex_version: None,
             git_version: None,
-            anthropic_key: false,
+            openrouter_key: false,
             openai_key: false,
             cwd: PathBuf::from("."),
             in_git_repo: false,
@@ -219,13 +209,12 @@ mod tests {
     }
 
     #[test]
-    fn pick_auto_picks_claude_first() {
+    fn pick_auto_picks_codex_when_present() {
         let r = DoctorReport {
-            claude_version: Some("claude 1.0".into()),
             codex_version: Some("codex 1.0".into()),
             ..empty_report()
         };
-        assert_eq!(pick_auto(&r), Some(AgentKind::Claude));
+        assert_eq!(pick_auto(&r), Some(AgentKind::Codex));
     }
 
     #[test]

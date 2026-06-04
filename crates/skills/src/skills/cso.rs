@@ -91,8 +91,8 @@ impl Skill for Cso {
 
         // 2. engulf scan + audit.
         let scan = CodebaseScanner::new(cwd).scan();
-        let provider = match ctx.provider.unwrap_or(Provider::Anthropic) {
-            Provider::Anthropic => EngulfProvider::Anthropic,
+        let provider = match ctx.provider.unwrap_or(Provider::OpenRouter) {
+            Provider::OpenRouter => EngulfProvider::OpenRouter,
             Provider::Openai => EngulfProvider::Openai,
         };
         let audit = run_security_audit_with(

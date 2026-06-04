@@ -30,7 +30,7 @@ pub enum Error {
         used: String,
     },
 
-    /// An external CLI we depend on (claude, codex, gh, git) is missing or unusable.
+    /// An external CLI we depend on (codex, gh, git) is missing or unusable.
     #[error("external tool unavailable: {tool}: {reason}")]
     ExternalTool {
         /// The binary we tried to invoke.

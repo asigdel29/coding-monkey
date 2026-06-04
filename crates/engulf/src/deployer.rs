@@ -15,6 +15,7 @@
    History
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  full Rust port from packages/engulf/src/deployer.ts
+   2026-06-03   Anubhav Sigdel  default provider OpenRouter; neutral default model
 */
 
 use serde::{Deserialize, Serialize};
@@ -55,7 +56,7 @@ pub struct DeployStep {
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
-/// Generate the runbook. Uses Anthropic by default for the LLM tips
+/// Generate the runbook. Uses OpenRouter by default for the LLM tips
 /// step; pass [`RunbookOptions`] to override.
 pub async fn generate_deployment_runbook(scan: &ScanResult) -> anyhow::Result<DeploymentRunbook> {
     generate_with(scan, RunbookOptions::default()).await
@@ -409,13 +410,13 @@ async fn enhance_with_llm(
     platform: &str,
     opts: &RunbookOptions,
 ) -> anyhow::Result<String> {
-    let provider = opts.provider.unwrap_or(Provider::Anthropic);
+    let provider = opts.provider.unwrap_or(Provider::OpenRouter);
     let llm_provider = match provider {
-        Provider::Anthropic => LlmProvider::Anthropic,
+        Provider::OpenRouter => LlmProvider::OpenRouter,
         Provider::Openai => LlmProvider::Openai,
     };
     let model = opts.model.clone().unwrap_or_else(|| match provider {
-        Provider::Anthropic => "claude-haiku-4-5".into(),
+        Provider::OpenRouter => "google/gemini-2.0-flash-001".into(),
         Provider::Openai => "gpt-5-mini".into(),
     });
     let user = format!(

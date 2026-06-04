@@ -560,7 +560,7 @@ impl Skill for Ship {
 
         // Tag the unused Provider import as intentional — used via downstream
         // skill ctx propagation if a future flag toggles provider per stage.
-        let _ = Provider::Anthropic;
+        let _ = Provider::OpenRouter;
         Ok(finalize(start, &branch, &base, &stages, findings, data))
     }
 }

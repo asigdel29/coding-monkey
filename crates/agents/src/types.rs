@@ -8,6 +8,7 @@
    History
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  initial port from packages/agents/src/types.ts
+   2026-06-03   Anubhav Sigdel  drop legacy agent kind; codex-only roster
 */
 
 use serde::{Deserialize, Serialize};
@@ -17,11 +18,9 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentKind {
-    /// Pick whichever CLI is installed (claude → codex → fail).
+    /// Pick whichever supported CLI is installed (currently `codex`).
     Auto,
-    /// Force claude code.
-    Claude,
-    /// Force codex.
+    /// Force the codex CLI.
     Codex,
 }
 

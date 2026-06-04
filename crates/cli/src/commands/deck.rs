@@ -4,6 +4,7 @@
    History
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  initial scaffold
+   2026-06-03   Anubhav Sigdel  default agent binary → codex
 */
 
 use clap::Args as ClapArgs;
@@ -19,7 +20,7 @@ pub struct Args {
     pub host: String,
     #[arg(long)]
     pub cwd: Option<PathBuf>,
-    #[arg(long, default_value = "claude")]
+    #[arg(long, default_value = "codex")]
     pub agent: String,
     #[arg(long, value_delimiter = ',')]
     pub agent_args: Vec<String>,

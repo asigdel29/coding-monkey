@@ -10,7 +10,7 @@
         truncation.
      2. redact          — scrub secrets from agent stdout before logging.
      3. AuditLog        — append-only, hash-chained .monkey/sessions/audit-*.log.
-     4. doctor          — check claude/codex CLIs are on PATH.
+     4. doctor          — check the codex CLI + API keys are available.
      5. spawn_agent     — PTY-spawn the chosen CLI with the assembled prompt.
 
    Invariants
@@ -36,7 +36,7 @@
 pub mod audit;
 /// Context assembly — gather `.monkey/context/` and tentacle docs into a prompt.
 pub mod context;
-/// CLI doctor — verify `claude` / `codex` are present and pickable.
+/// CLI doctor — verify the `codex` CLI + API keys are present and pickable.
 pub mod doctor;
 /// Stdout redactor — scrub API keys and other secrets before logging.
 pub mod redact;

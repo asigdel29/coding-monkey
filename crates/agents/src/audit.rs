@@ -257,7 +257,7 @@ mod tests {
             .log(AuditEventType::SessionStart, json!({ "session": "s_001" }))
             .unwrap();
         logger
-            .log(AuditEventType::AgentSpawn, json!({ "kind": "claude" }))
+            .log(AuditEventType::AgentSpawn, json!({ "kind": "codex" }))
             .unwrap();
         logger.log(AuditEventType::SessionEnd, json!({})).unwrap();
         verify_audit_log(&path).expect("clean chain verifies");

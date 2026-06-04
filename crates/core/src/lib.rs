@@ -11,6 +11,7 @@
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  initial Rust port; types + errors + model
                                  registry + repo detector
+   2026-06-03   Anubhav Sigdel  add concurrency module (RAM/CPU agent cap)
 */
 
 #![deny(missing_debug_implementations)]
@@ -23,8 +24,11 @@
 //! - [`errors`] — workspace-wide error enum
 //! - [`models`] — model registry + tier selector
 //! - [`repos`] — repo detection (stack, complexity)
+//! - [`concurrency`] — RAM/CPU-aware agent concurrency cap
 //! - [`ids`] — short prefixed IDs
 
+/// RAM/CPU-aware policy for how many agents may run at once.
+pub mod concurrency;
 /// Workspace-wide error enum bubbled up via `?` from every internal crate.
 pub mod errors;
 /// Short, prefixed, time-sortable IDs for tasks, workers, and sessions.
@@ -36,6 +40,7 @@ pub mod repos;
 /// Serde data models shared across the workspace (tasks, sessions, configs).
 pub mod types;
 
+pub use concurrency::{max_concurrent_agents, AgentBudget, HostCapacity};
 pub use errors::Error;
 pub use ids::generate_id;
 pub use models::{tier_for_task, ModelRegistry, ModelSelector, ModelSpec, ModelTier, Provider};

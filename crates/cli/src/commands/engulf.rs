@@ -4,6 +4,7 @@
    History
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  initial scaffold
+   2026-06-03   Anubhav Sigdel  provider default openrouter|openai
 */
 
 use clap::Args as ClapArgs;
@@ -19,14 +20,14 @@ pub struct Args {
     pub phases: String,
     #[arg(long)]
     pub output: Option<PathBuf>,
-    #[arg(long, default_value = "anthropic")]
+    #[arg(long, default_value = "openrouter")]
     pub provider: String,
 }
 
 pub async fn run(args: Args) -> anyhow::Result<()> {
     let provider = match args.provider.as_str() {
         "openai" => Provider::Openai,
-        _ => Provider::Anthropic,
+        _ => Provider::OpenRouter,
     };
     let config = EngulfConfig {
         target_path: args

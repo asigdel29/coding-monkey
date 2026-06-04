@@ -8,9 +8,9 @@
      1. Tier-based model selection. Skills request a TaskType and
         optional forceTier; the registry+selector picks the cheapest
         model that satisfies it.
-     2. Token usage accounting. Anthropic and OpenAI both report
-        prompt + completion tokens in different fields — we normalize
-        to monkey_core::TokenUsage with USD cost computed from the
+     2. Token usage accounting. The OpenAI-compatible `usage` block
+        (shared by OpenAI and OpenRouter) is normalized to
+        monkey_core::TokenUsage with USD cost computed from the
         registry rate at call time.
 
    The simpler `complete()` in monkey-engulf::llm is fine for
@@ -20,6 +20,7 @@
    History
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  initial port from packages/skills/src/llm.ts
+   2026-06-03   Anubhav Sigdel  single OpenAI-compatible path (OpenRouter + OpenAI)
 */
 
 use anyhow::{anyhow, Context};
@@ -93,7 +94,7 @@ impl LLMClient {
     ) -> ModelSpec {
         let p = provider.unwrap_or(self.default_provider);
         let core_provider = match p {
-            Provider::Anthropic => CoreProvider::Anthropic,
+            Provider::OpenRouter => CoreProvider::OpenRouter,
             Provider::Openai => CoreProvider::Openai,
         };
         let selector = ModelSelector::new(&self.registry).prefer(core_provider);
@@ -118,80 +119,28 @@ impl LLMClient {
             })
     }
 
-    /// Send the request and return the model's text plus usage.
+    /// Send the request and return the model's text plus usage. Both
+    /// providers speak the OpenAI Chat Completions format, so a single
+    /// path serves OpenRouter and OpenAI — only the endpoint and key
+    /// differ.
     pub async fn complete(&self, req: LLMRequest) -> anyhow::Result<LLMResponse> {
         let provider = req.provider.unwrap_or(self.default_provider);
         let model = self.pick(req.task_type, req.force_tier, Some(provider));
         let max_tokens = req.max_tokens.unwrap_or(2048);
 
-        match provider {
-            Provider::Anthropic => self.complete_anthropic(model, &req, max_tokens).await,
-            Provider::Openai => self.complete_openai(model, &req, max_tokens).await,
-        }
-    }
-
-    async fn complete_anthropic(
-        &self,
-        model: ModelSpec,
-        req: &LLMRequest,
-        max_tokens: u32,
-    ) -> anyhow::Result<LLMResponse> {
-        let key = std::env::var("ANTHROPIC_API_KEY")
-            .map_err(|_| LLMUnavailableError("ANTHROPIC_API_KEY not set".into()))?;
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(120))
-            .build()
-            .context("build http client")?;
-        let body = serde_json::json!({
-            "model": model.id,
-            "max_tokens": max_tokens,
-            "system": req.system,
-            "messages": [{ "role": "user", "content": req.user }],
-        });
-        let resp = client
-            .post("https://api.anthropic.com/v1/messages")
-            .header("x-api-key", key)
-            .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await
-            .context("anthropic request failed")?;
-        let status = resp.status();
-        let raw = resp.text().await.context("anthropic body")?;
-        if !status.is_success() {
-            return Err(anyhow!("anthropic {status}: {raw}"));
-        }
-        let parsed: AnthropicResp =
-            serde_json::from_str(&raw).with_context(|| format!("anthropic decode: {raw}"))?;
-        let text = parsed
-            .content
-            .into_iter()
-            .filter(|b| b.kind == "text")
-            .map(|b| b.text)
-            .collect::<Vec<_>>()
-            .join("");
-        let usage = TokenUsage {
-            input_tokens: parsed.usage.input_tokens,
-            output_tokens: parsed.usage.output_tokens,
-            total_tokens: parsed.usage.input_tokens + parsed.usage.output_tokens,
-            estimated_cost_usd: cost(
-                &model,
-                parsed.usage.input_tokens,
-                parsed.usage.output_tokens,
+        let (endpoint, key_env) = match provider {
+            Provider::OpenRouter => (
+                "https://openrouter.ai/api/v1/chat/completions",
+                "OPENROUTER_API_KEY",
+            ),
+            Provider::Openai => (
+                "https://api.openai.com/v1/chat/completions",
+                "OPENAI_API_KEY",
             ),
         };
-        Ok(LLMResponse { text, model, usage })
-    }
+        let key = std::env::var(key_env)
+            .map_err(|_| LLMUnavailableError(format!("{key_env} not set")))?;
 
-    async fn complete_openai(
-        &self,
-        model: ModelSpec,
-        req: &LLMRequest,
-        max_tokens: u32,
-    ) -> anyhow::Result<LLMResponse> {
-        let key = std::env::var("OPENAI_API_KEY")
-            .map_err(|_| LLMUnavailableError("OPENAI_API_KEY not set".into()))?;
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(120))
             .build()
@@ -205,20 +154,20 @@ impl LLMClient {
             ],
         });
         let resp = client
-            .post("https://api.openai.com/v1/chat/completions")
+            .post(endpoint)
             .bearer_auth(key)
             .header("content-type", "application/json")
             .json(&body)
             .send()
             .await
-            .context("openai request failed")?;
+            .context("chat completion request failed")?;
         let status = resp.status();
-        let raw = resp.text().await.context("openai body")?;
+        let raw = resp.text().await.context("read response body")?;
         if !status.is_success() {
-            return Err(anyhow!("openai {status}: {raw}"));
+            return Err(anyhow!("{status}: {raw}"));
         }
         let parsed: OpenAIResp =
-            serde_json::from_str(&raw).with_context(|| format!("openai decode: {raw}"))?;
+            serde_json::from_str(&raw).with_context(|| format!("decode response: {raw}"))?;
         let text = parsed
             .choices
             .first()
@@ -248,27 +197,7 @@ fn cost(model: &ModelSpec, input: u64, output: u64) -> f64 {
 
 /// True if at least one provider env var is set.
 pub fn has_any_llm_key() -> bool {
-    std::env::var("ANTHROPIC_API_KEY").is_ok() || std::env::var("OPENAI_API_KEY").is_ok()
-}
-
-#[derive(Deserialize)]
-struct AnthropicResp {
-    content: Vec<AnthropicBlock>,
-    usage: AnthropicUsage,
-}
-
-#[derive(Deserialize)]
-struct AnthropicBlock {
-    #[serde(rename = "type")]
-    kind: String,
-    #[serde(default)]
-    text: String,
-}
-
-#[derive(Deserialize)]
-struct AnthropicUsage {
-    input_tokens: u64,
-    output_tokens: u64,
+    std::env::var("OPENROUTER_API_KEY").is_ok() || std::env::var("OPENAI_API_KEY").is_ok()
 }
 
 #[derive(Deserialize)]
@@ -300,14 +229,14 @@ mod tests {
 
     #[test]
     fn pick_chooses_provider_preference_first() {
-        let c = LLMClient::new(Provider::Anthropic);
+        let c = LLMClient::new(Provider::OpenRouter);
         let m = c.pick(TaskType::Chat, None, Some(Provider::Openai));
         assert_eq!(m.provider, CoreProvider::Openai);
     }
 
     #[test]
     fn pick_respects_force_tier() {
-        let c = LLMClient::new(Provider::Anthropic);
+        let c = LLMClient::new(Provider::OpenRouter);
         let m = c.pick(
             TaskType::Chat, /* default Fast */
             Some(ModelTier::Powerful),

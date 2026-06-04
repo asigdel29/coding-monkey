@@ -9,6 +9,7 @@
    History
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  full port from packages/skills/src/types.ts
+   2026-06-03   Anubhav Sigdel  provider enum → OpenRouter/OpenAI
 */
 
 use async_trait::async_trait;
@@ -125,8 +126,8 @@ impl SkillContext {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Provider {
-    /// Anthropic.
-    Anthropic,
+    /// OpenRouter — one key, many upstream models (OpenAI-compatible).
+    OpenRouter,
     /// OpenAI.
     Openai,
 }

@@ -31,7 +31,7 @@ use crate::types::{AgentKind, SpawnOpts};
 pub struct SpawnResult {
     /// The live agent terminal — read/write/resize/kill via this handle.
     pub terminal: AgentTerminal,
-    /// Resolved kind (auto → claude or codex).
+    /// Resolved kind (auto → codex).
     pub kind: AgentKind,
     /// Path of the binary that was launched.
     pub binary: String,
@@ -125,7 +125,6 @@ where
         explicit => explicit,
     };
     let binary = match kind {
-        AgentKind::Claude => "claude",
         AgentKind::Codex => "codex",
         AgentKind::Auto => unreachable!("Auto resolved above"),
     };

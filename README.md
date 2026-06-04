@@ -1,379 +1,190 @@
-```
-/*
-   File: README.md
-   Project: coding-monkey — AI agent platform in Rust
-
-   History
-   Date         Author          Changes
-   2026-05-05   Anubhav Sigdel  initial Rust workspace scaffold; foundation
-                                 crates (core, agents) ported with full impl;
-                                 engulf/skills/pentest-agent/deck/cli/web
-                                 scaffolded with module structure and stubs.
-
-   Contents
-   - Workspace map
-   - Public surface (per `monkey <command>`)
-   - Build instructions
-   - Porting status
-*/
-
-package coding-monkey;
-```
-
 # coding-monkey
 
-> A Rust implementation of an internal coding agent I use at work.
->
-> Single-binary `monkey` CLI: drop into any repo, get a committed
-> `.monkey/context/` directory that every spawned agent reads as a system
-> prompt, a deep-learn pipeline that scans the codebase and writes the
-> context for you, a web dashboard for parallel agent terminals, a
-> multi-repo orchestrator, and a mandatory pre-push pentest gate — all in
-> native Rust with no runtime, no GC, no Node.
+A single-binary coding-agent platform written in Rust. Drop `monkey` into any
+repo, bring your own API key, and run a swarm of AI agents — from the terminal
+or a web dashboard — scaled to whatever your machine can handle.
+
+No runtime, no GC, no Node. One `monkey` binary.
 
 ```bash
-cargo install --path crates/cli           # builds the `monkey` binary
+# 1. Clone and build
+git clone https://github.com/asigdel29/coding-monkey
+cd coding-monkey
+cargo install --path crates/cli
+
+# 2. Bring your own key (one OpenRouter key reaches every major model)
+export OPENROUTER_API_KEY=sk-or-v1-...     # or: export OPENAI_API_KEY=sk-...
+
+# 3. Drop into a repo and go
 cd your-project
-monkey init                               # scaffold .monkey/  (asks if you want engulf)
-monkey deck                               # web frontend at https://127.0.0.1:8787
-monkey chat                               # REPL with the auto-detected agent
-monkey ship                               # typecheck → review → cso → pentest → push
+monkey init        # scaffold .monkey/
+monkey doctor      # check keys, git, and how many agents your box can run
+monkey deck        # open the web dashboard at http://127.0.0.1:8787
 ```
 
 ---
 
-## What this code does
+## What it does
 
-`coding-monkey` is a Rust cargo workspace with **8 crates**. The `monkey-cli`
-crate produces a single `monkey` binary; every subcommand lazy-loads exactly
-one workspace crate so cold-start stays under a few ms. The five distinguishing
-features are:
-
-1. **Reads a committed `.monkey/context/` directory** and feeds it as a system
-   prompt to whichever agent CLI is on `PATH`. Same context across teammates
-   because `.monkey/context/` is in git.
-2. **Generates that context automatically** with `monkey engulf` — scans the
-   repo, detects stack/deps/API routes, runs an LLM-assisted security audit,
-   writes a deployment runbook, emits an Obsidian-shaped knowledge vault.
-3. **Runs many agent terminals in one browser tab** (`monkey deck`) — each
-   scoped to a "tentacle" so parallel work doesn't trample shared context.
-4. **Routes work across multiple repos to the right model** (`monkey orchestrate`)
-   — picks fast/balanced/powerful tiers per task, tracks token cost.
-5. **Gates `git push` on a mandatory native-Rust pentest** (`monkey pentest
-   install-hook`) and ships a SOC 2 evidence pipeline (control-matrix checks,
-   tamper-evident audit-log hash chain, auditor-ready tar.gz bundles).
+- **Bring-your-own-key, any model.** The LLM client speaks the OpenAI-compatible
+  Chat Completions API, so OpenRouter (one key, hundreds of models) and OpenAI
+  both work with zero config. Switch models by editing `.monkey/config.json`.
+- **Runs as many agents as your machine allows.** The deck probes free RAM and
+  CPU at startup and caps concurrency so you never thrash the box. Check the
+  number with `monkey doctor`.
+- **A committed agent brain.** Everything under `.monkey/context/` is read as the
+  system prompt for every agent, so your whole team shares the same context.
+- **Generates that context for you.** `monkey engulf` scans the repo, detects the
+  stack, runs a security audit, and writes a deployment runbook.
+- **A web dashboard.** `monkey deck` runs multiple agent terminals in one browser
+  tab, each scoped to a "tentacle" so parallel work doesn't collide.
+- **A pre-push pentest gate.** `monkey pentest install-hook` blocks `git push` on
+  a native-Rust security scan.
 
 ---
 
-## Workspace map
+## Bring your own key
 
-```
-crates/
-├── core/             monkey-core             types, errors, model registry, repo detection
-├── agents/           monkey-agents           context, redact, audit hash chain, PTY spawn
-├── engulf/           monkey-engulf           scanner, security, deployer, vault, prompts
-├── skills/           monkey-skills           review, investigate, cso, ship + registry
-├── pentest-agent/    monkey-pentest-agent    pre-push hook + native-Rust pentest engine
-├── deck/             monkey-deck             axum HTTP+WS server, tentacles, schemas
-├── cli/              monkey-cli              the `monkey` binary
-└── web/              monkey-web              leptos CSR WASM frontend (xterm.js interop)
-```
+| Provider | Env var | Notes |
+| --- | --- | --- |
+| **OpenRouter** (default) | `OPENROUTER_API_KEY` | One key, many upstream models. Recommended. |
+| **OpenAI** | `OPENAI_API_KEY` | Direct to OpenAI. |
 
-```
-/**
- * @crate      monkey-core
- * @entry      crates/core/src/lib.rs
- * @purpose    Foundation. Types/errors/IDs/models/repo-detection. No I/O at
- *             load time. Every other crate depends on this.
- * @invariant  No top-level imports of std::process, std::net — keep deps light.
- * @exports    Error, ModelRegistry, ModelSelector, ModelTier, ModelSpec,
- *             TaskState, TaskStatus, TaskType, TokenUsage, RepoConfig,
- *             SessionState, generate_id, detect_repo, discover_repos
-**/
+Any provider that exposes the OpenAI Chat Completions API works. Pick the default
+provider and model in `.monkey/config.json`:
+
+```json
+{
+  "default_agent": "auto",
+  "default_provider": "openrouter",
+  "default_tier": "balanced",
+  "fail_on": "high"
+}
 ```
 
-```
-/**
- * @crate      monkey-agents
- * @entry      crates/agents/src/lib.rs
- * @purpose    The "spawn an agent" primitive. Five responsibilities:
- *               assemble_context — read .monkey/context/* + tentacle, cap 32 KB
- *               redact          — scrub secrets from PTY stdout
- *               AuditLogger     — append-only, hash-chained .monkey/sessions/audit-*.log
- *               doctor          — environment diagnostics
- *               spawn_agent     — PTY-spawn the chosen CLI with the assembled prompt
- * @invariant  Missing context files skipped silently; oversize files trimmed
- *             and surfaced via context.truncated_files.
- * @invariant  Audit log is hash-chained — verify_audit_log walks end-to-end.
-**/
-```
-
-```
-/**
- * @crate      monkey-deck
- * @entry      crates/deck/src/lib.rs
- * @purpose    Web frontend server. axum HTTP+WS. Refuses to bind off-loopback
- *             without TLS unless --insecure-no-tls. Tentacles persisted as
- *             folders in .monkey/tentacles/<id>/. Each terminal tab is a
- *             portable-pty spawn of the configured agent. Each tentacle and
- *             tab is decorated with the pixel-monkey icon (replaces the
- *             octogent octopus from the TS reference).
- * @invariant  WS messages rate-limited (default 100/s/connection).
- * @invariant  Sessions expire (default 8h TTL).
-**/
-```
-
-```
-/**
- * @crate      monkey-pentest-agent
- * @entry      crates/pentest-agent/src/lib.rs
- * @purpose    Mandatory pre-push pentest gate. Native-Rust reimplementation
- *             of the Apex (Apache-2.0) agent that the TS port shelled out to.
- *             Two modes: whitebox source analysis (--cwd) and blackbox HTTP
- *             probing (--target).
- * @exports    install_pre_push_hook, uninstall_pre_push_hook,
- *             is_pre_push_installed, run_pentest, summarize
-**/
-```
+See the built-in model lineup with `monkey models`.
 
 ---
 
-## Public surface — `monkey` commands
+## Scaling agents to your machine
+
+`monkey deck` runs as many agent terminals as your hardware can sustain. At
+startup it derives a cap from free RAM and CPU count:
 
 ```
-/**
- * monkey init [path]
- * Scaffold .monkey/ in the project: context dirs, templates, default tentacle,
- * config.json, optional engulf prompt.
- *
- * @param  -y, --yes       Accept defaults.
- * @param  --no-engulf     Skip the post-init engulf prompt.
- * @return condition: .monkey/{config.json, context/*.md, tentacles/main/*} written.
- * @see    crates/cli/src/commands/init.rs
-**/
-
-/**
- * monkey engulf [path]
- * Deep-learn the codebase and write context files agents will consume.
- *
- * @param  --auto                Run all phases without prompts.
- * @param  --phases <list>       scan | security | docs | vault | deploy
- * @param  --output <dir>        Output dir (default: .monkey/ inside target).
- * @param  --provider <name>     anthropic | openai (default: anthropic).
- * @return condition: .monkey/context/*.md + .monkey/vault/ populated.
- * @see    crates/engulf/src/lib.rs
-**/
-
-/**
- * monkey chat [prompt]                                    (default command)
- * Interactive REPL. Hands stdin/stdout to the agent CLI with a system prompt
- * assembled from .monkey/.
- *
- * @param  --agent <agent>       claude | codex | auto (default: auto)
- * @param  --tentacle <id>       Tentacle scope (default: "main")
- * @param  --cwd <path>          Project directory.
- * @return condition: process exits with the agent's exit code.
- * @exception 1 IF (no agent CLI on PATH OR doctor fails)
- * @see    crates/cli/src/commands/chat.rs
-**/
-
-/**
- * monkey deck
- * Web frontend: multi-terminal agent dashboard with tentacle contexts.
- *
- * @param  --port <n>            HTTP/WS port (default: 8787)
- * @param  --host <addr>         Bind address (default: 127.0.0.1)
- * @param  --agent <bin>         Agent binary (default: claude)
- * @param  --ttl <seconds>       Session token TTL (default: 8h)
- * @param  --rate <perSec>       WS messages/sec/connection (default: 100)
- * @param  --cert <path>         TLS cert (PEM)  WHERE (required off-loopback)
- * @param  --key  <path>         TLS key  (PEM)  WHERE (required off-loopback)
- * @param  --insecure-no-tls     Allow non-loopback without TLS (DANGEROUS)
- * @return condition: HTTPS+WSS server bound; URL printed; serves until SIGINT.
- * @see    crates/deck/src/server.rs
-**/
-
-/**
- * monkey orchestrate
- * Multi-repo orchestrator REPL.
- *
- * @param  --dir <dir>           Workspace root (default: cwd)
- * @return condition: SessionManager initialized; REPL with /quit /usage /repos.
-**/
-
-/**
- * monkey skill (list | run <name> [...])
- * @see    crates/skills/src/registry.rs
-**/
-
-/**
- * monkey review                                         @see review skill
- * monkey investigate <symptom>                          @see investigate skill
- * monkey cso                                            @see cso skill
- * monkey ship                                           @see ship skill
-**/
-
-/**
- * monkey pentest [install-hook | uninstall-hook | status]
- * AI-driven penetration testing — mandatory before every push when the hook
- * is installed.
- *
- * @param  --target <url>        Blackbox target URL.
- * @param  --cwd <path>          Whitebox source path.
- * @param  --fail-on <severity>  critical | high | medium | low (default: high)
- * @param  --pre-push            Run as pre-push gate.
- * @return condition: result.ok=true means no findings ≥ fail-on severity.
- * @see    crates/pentest-agent/src/runner.rs
-**/
-
-/**
- * monkey compliance (status | verify | evidence)
- * SOC 2 audit-readiness pipeline.
- *
- *   verify   — Walk every audit-log hash chain in .monkey/sessions/.
- *   status   — Run automated checks for every control in CONTROL_MATRIX.json.
- *   evidence — Bundle audit logs + matrix + policies into auditor-ready tar.gz.
- *
- * @see    crates/cli/src/commands/compliance.rs
-**/
-
-/**
- * monkey doctor    Environment diagnostics — keys, git, agent CLIs.
- * monkey models    List registered AI models with cost tiers.
-**/
+max agents = min( free_RAM × 75% ÷ ~512 MiB per agent,  CPUs × 4 )   (at least 1)
 ```
+
+Spawns past the cap are refused rather than thrashing the machine. Check your
+number any time:
+
+```bash
+monkey doctor
+#   Capacity
+#     [info] RAM 12480 MiB free / 32768 MiB total   CPUs 10
+#     [info] max concurrent agents: 18
+```
+
+Tune the per-agent budget or set a hard ceiling via `AgentBudget` in
+`crates/core/src/concurrency.rs`.
 
 ---
 
-## The `.monkey/` on-disk contract
+## Commands
+
+Run `monkey <command> --help` for full flags.
+
+| Command | What it does |
+| --- | --- |
+| `monkey init [path]` | Scaffold `.monkey/` (context, config, default tentacle). |
+| `monkey engulf [path]` | Scan the repo and write context files agents will read. |
+| `monkey chat [prompt]` | Interactive REPL with an agent, using the assembled context. |
+| `monkey deck` | Web dashboard: multiple agent terminals with tentacle contexts. |
+| `monkey orchestrate` | Multi-repo orchestrator REPL. |
+| `monkey review` | Review the current diff. |
+| `monkey investigate <symptom>` | Root-cause a bug. |
+| `monkey cso` | Security review (Chief Security Officer skill). |
+| `monkey ship` | typecheck → review → cso → pentest → push. |
+| `monkey pentest [install-hook \| status]` | Native-Rust pentest; optional pre-push gate. |
+| `monkey compliance [status \| verify \| evidence]` | SOC 2 audit-readiness pipeline. |
+| `monkey doctor` | Diagnostics: keys, git, agent CLI, host capacity. |
+| `monkey models` | List registered models with cost tiers. |
+
+---
+
+## The `.monkey/` directory
+
+`monkey init` scaffolds a per-project directory. The `context/` and `tentacles/`
+folders are meant to be committed — they are the project's shared "agent brain".
 
 ```
 .monkey/
-├── config.json          // default agent, tier, fail-on
-├── context/             // ⭐ committed; the project's "agent brain"
+├── config.json          default agent, provider, tier, fail-on
+├── context/             committed — read as the agent system prompt
 │   ├── PROJECT.md
 │   ├── CONVENTIONS.md
-│   ├── CLAUDE.md
-│   ├── CODEX.md
-│   ├── GLOSSARY.md
-│   ├── SECURITY.md
-│   └── DEPLOYMENT.md
-├── tentacles/<id>/      // ⭐ committed; scoped work containers
-│   ├── CONTEXT.md
-│   └── todo.md
-├── plans/               // design docs
-├── reports/             // opt-in committed skill outputs
-├── vault/               // gitignored: Obsidian-shaped knowledge graph
-└── sessions/            // gitignored: ephemeral worker transcripts
-                         //             + tamper-evident audit-*.log files
+│   ├── AGENT.md         generic agent guidance
+│   ├── CODEX.md         codex-specific guidance
+│   └── GLOSSARY.md
+├── tentacles/<id>/      committed — scoped work containers (CONTEXT.md + todo.md)
+├── vault/               gitignored — generated knowledge graph
+└── sessions/            gitignored — transcripts + tamper-evident audit logs
 ```
 
-Read order, capped at 32 KB total:
-```
-.monkey/context/PROJECT.md
-.monkey/context/CONVENTIONS.md
-.monkey/context/GLOSSARY.md
-.monkey/context/{CLAUDE,CODEX}.md          # whichever matches the agent kind
-.monkey/tentacles/<active>/CONTEXT.md
-.monkey/tentacles/<active>/todo.md
-```
+Context is assembled in this order, capped at 32 KB:
+`PROJECT.md → CONVENTIONS.md → GLOSSARY.md → {AGENT,CODEX}.md → tentacle CONTEXT.md → tentacle todo.md`.
 
 ---
 
-## Build
+## Build from source
 
 ```bash
-# Install rustup if you don't have it.
+# Install Rust if needed
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# From the workspace root:
-cargo build --workspace                  # debug build
-cargo build --workspace --release        # release build
-cargo test  --workspace                  # all crate tests
-cargo clippy --workspace --all-targets -- -D warnings
-cargo fmt   --all -- --check
+# From the workspace root
+cargo build --workspace            # debug build
+cargo test  --workspace            # run the tests
+cargo install --path crates/cli    # install the `monkey` binary
 
-# Install the binary:
-cargo install --path crates/cli
-
-# WASM frontend (requires trunk):
-cargo install trunk wasm-bindgen-cli
-trunk serve crates/web/index.html
+# Web dashboard (leptos/WASM) — built with trunk
+cargo install trunk
+trunk build crates/web/index.html
 ```
 
 ---
 
-## Porting status (vs. the TS reference)
+## Project layout
 
-| Crate                    | Status                                |
-| ------------------------ | ------------------------------------- |
-| `monkey-core`            | ✅ full impl + tests                  |
-| `monkey-agents`          | ✅ full impl + tests (ctx/redact/audit/doctor/spawn) |
-| `monkey-pentest-agent`   | hook ✅ full impl + tests; runner stub |
-| `monkey-engulf`          | scaffolded (module layout + types)    |
-| `monkey-skills`          | scaffolded (Skill trait + registry)   |
-| `monkey-deck`            | scaffolded (DeckOpts + tentacles read/write) |
-| `monkey-cli`             | scaffolded (full subcommand surface, dispatchers wired) |
-| `monkey-web`             | leptos CSR shell ✅ + monkey pixel-icon UI + xterm.js mount + WS auto-reconnect |
+Eight crates in a Cargo workspace:
 
-Subsequent commits port crate-by-crate to full parity with the TS reference.
+| Crate | Role |
+| --- | --- |
+| `monkey-core` | Types, errors, model registry, repo detection, agent concurrency cap. |
+| `monkey-agents` | Context assembly, secret redaction, audit log, PTY agent spawn. |
+| `monkey-engulf` | Repo scanner, security audit, deployer, knowledge vault. |
+| `monkey-skills` | review / investigate / cso / ship skills + registry. |
+| `monkey-pentest-agent` | Pre-push hook + native-Rust pentest engine. |
+| `monkey-deck` | axum HTTP + WebSocket server; tentacles. |
+| `monkey-cli` | The `monkey` binary. |
+| `monkey-web` | leptos WASM dashboard. |
+
+---
 
 ## Credits
 
-`coding-monkey` is built on the work of several open-source projects.
-The pieces it ports, wraps, or directly draws on:
+Built on the work of several open-source projects:
 
-### Agent CLIs
-
-- **[Claude Code](https://github.com/anthropics/claude-code)** — Anthropic's
-  official CLI. `monkey-agents` spawns it as the default agent CLI; the
-  PTY-multiplex pattern in `crates/agents/src/spawn.rs` is shaped to match
-  what Claude Code expects on stdin / produces on stdout.
-- **[Codex CLI](https://github.com/openai/codex)** — OpenAI's official CLI.
-  `monkey-agents` falls back to it when `claude` isn't on `PATH`; both
-  adapters share the same prompt-assembly path.
-
-### Web frontend
-
-- **[Octogent](https://github.com/asigdel29/octogent)** — the original
-  octopus-shaped pixel UI that the deck dashboard layout descends from.
-  The three-pane CSS grid (tentacles / terminals / context+todo) and the
-  per-tentacle pixel-icon convention come from there. The visual mark is
-  replaced with the pixel-monkey (`crates/web/src/icon.rs`); the
-  *concept* of tentacles as scoped work containers is preserved.
-
-### Terminal / agent infrastructure
-
-- **[Warp](https://github.com/warpdotdev/warp)** — Warp's terminal block
-  model and the patterns from
-  [`session-sharing-protocol`](https://github.com/warpdotdev/session-sharing-protocol)
-  inform `monkey-deck`'s WS terminal-multiplexing protocol. The monkey
-  pentest engine uses ideas from
-  [`workflows`](https://github.com/warpdotdev/workflows) for the skill
-  registry shape. We do not vendor Warp source; the dependencies we
-  share with them (`portable-pty`, `tokio-tungstenite`, `axum`) are the
-  community crates Warp itself uses.
-- **[Warp `rmcp`](https://github.com/warpdotdev/rmcp)** — the Rust MCP
-  SDK. A future `monkey-mcp` crate (not yet present) will use this for
-  agent ↔ tool wiring.
-
-### Pentest engine
-
-- **[Pensar Apex](https://github.com/pensarai/apex)** — the AI pentest
-  agent the TypeScript reference shelled out to. `monkey-pentest-agent`
-  is a native-Rust reimplementation: pattern-based whitebox source
-  analysis plus HTTP-probe blackbox checks. The severity bucketing, CWE
-  mapping, and result schema come from Apex's report shape.
-
-### Codebase scanning + security audit
-
-- **[gitleaks](https://github.com/gitleaks/gitleaks)** — the secret-scan
-  patterns in `monkey-pentest-agent::whitebox` (Anthropic / OpenAI /
-  GitHub / AWS / PEM block patterns) are the same regex shapes gitleaks
-  ships, ported to Rust's `regex` crate.
-
-If you're a maintainer of one of these projects and want a citation
-adjusted, open an issue on this repo.
+- **LLM providers** — the client targets the OpenAI-compatible Chat Completions
+  API; defaults are [OpenRouter](https://openrouter.ai) and
+  [OpenAI](https://platform.openai.com).
+- **[Codex CLI](https://github.com/openai/codex)** — PTY-spawned for the
+  interactive REPL hand-off (the agent binary is configurable).
+- **[gitleaks](https://github.com/gitleaks/gitleaks)** — secret-scan regex shapes
+  ported to Rust for the whitebox pentest.
+- **[portable-pty](https://github.com/wez/wezterm), [axum](https://github.com/tokio-rs/axum),
+  [leptos](https://github.com/leptos-rs/leptos), [xterm.js](https://xtermjs.org)** —
+  the terminal, server, and UI foundations.
 
 ## License
 

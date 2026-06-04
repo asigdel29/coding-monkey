@@ -14,6 +14,7 @@
    History
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  initial Rust port from packages/agents/src/redact.ts
+   2026-06-03   Anubhav Sigdel  de-brand key labels; add OpenRouter pattern
 */
 
 use once_cell::sync::Lazy;
@@ -34,8 +35,8 @@ static PATTERNS: Lazy<Vec<Pattern>> = Lazy::new(|| {
         }
     }
     vec![
-        p(r"sk-ant-[A-Za-z0-9_\-]{20,}", "anthropic-key"),
-        p(r"sk-(proj-)?[A-Za-z0-9]{20,}", "openai-key"),
+        p(r"sk-or-v1-[A-Za-z0-9]{20,}", "openrouter-key"),
+        p(r"sk-(proj-|ant-)?[A-Za-z0-9_\-]{20,}", "llm-api-key"),
         p(r"gh[pousr]_[A-Za-z0-9]{30,}", "github-token"),
         p(r"AKIA[0-9A-Z]{16}", "aws-access-key"),
         p(r"xox[baprs]-[A-Za-z0-9-]{10,}", "slack-token"),
@@ -82,17 +83,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn redacts_anthropic_key() {
-        let input = "ANTHROPIC_API_KEY=sk-ant-api03-1234567890abcdefghij1234";
+    fn redacts_openrouter_key() {
+        let input = "OPENROUTER_API_KEY=sk-or-v1-1234567890abcdefghij1234";
         let out = redact(input);
-        assert!(out.contains("[REDACTED:anthropic-key]"));
-        assert!(!out.contains("sk-ant-api03"));
+        assert!(out.contains("[REDACTED:openrouter-key]"));
+        assert!(!out.contains("sk-or-v1-1234"));
     }
 
     #[test]
-    fn redacts_openai_key() {
+    fn redacts_llm_api_key() {
         let out = redact("token=sk-proj-1234567890ABCDEFGHIJKLMNOP");
-        assert!(out.contains("[REDACTED:openai-key]"));
+        assert!(out.contains("[REDACTED:llm-api-key]"));
     }
 
     #[test]
@@ -116,11 +117,11 @@ mod tests {
     fn redact_object_walks_nested() {
         let mut v: Value = serde_json::json!({
             "outer": "ghp_1234567890123456789012345678901234567890",
-            "nested": { "inner": ["sk-ant-api03-1234567890abcdefghij1234"] },
+            "nested": { "inner": ["sk-or-v1-1234567890abcdefghij1234"] },
         });
         redact_object(&mut v);
         let s = v.to_string();
         assert!(s.contains("[REDACTED:github-token]"));
-        assert!(s.contains("[REDACTED:anthropic-key]"));
+        assert!(s.contains("[REDACTED:openrouter-key]"));
     }
 }

@@ -8,6 +8,7 @@
    History
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  initial scaffold
+   2026-06-03   Anubhav Sigdel  scaffold AGENT.md; default_provider=openrouter
 */
 
 use clap::Args as ClapArgs;
@@ -40,7 +41,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         &monkey.join("context").join("CONVENTIONS.md"),
         TEMPLATE_CONVENTIONS,
     )?;
-    write_if_missing(&monkey.join("context").join("CLAUDE.md"), TEMPLATE_CLAUDE)?;
+    write_if_missing(&monkey.join("context").join("AGENT.md"), TEMPLATE_AGENT)?;
     write_if_missing(&monkey.join("context").join("CODEX.md"), TEMPLATE_CODEX)?;
     write_if_missing(
         &monkey.join("context").join("GLOSSARY.md"),
@@ -71,6 +72,7 @@ fn write_if_missing(p: &std::path::Path, body: &str) -> std::io::Result<()> {
 
 const DEFAULT_CONFIG: &str = r#"{
   "default_agent": "auto",
+  "default_provider": "openrouter",
   "default_tier": "balanced",
   "fail_on": "high"
 }
@@ -79,6 +81,7 @@ const DEFAULT_CONFIG: &str = r#"{
 const TEMPLATE_PROJECT: &str =
     "# Project\n\n_Stack and key files. Run `monkey engulf` to populate._\n";
 const TEMPLATE_CONVENTIONS: &str = "# Conventions\n\n_How this team writes code. Hand-edited._\n";
-const TEMPLATE_CLAUDE: &str = "# Claude-only guidance\n";
+const TEMPLATE_AGENT: &str =
+    "# Agent guidance\n\n_Instructions shared by every agent. Hand-edited._\n";
 const TEMPLATE_CODEX: &str = "# Codex-only guidance\n";
 const TEMPLATE_GLOSSARY: &str = "# Glossary\n\n_Project terms._\n";

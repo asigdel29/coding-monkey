@@ -5,10 +5,12 @@
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  initial scaffold
    2026-05-06   Anubhav Sigdel  print versions + repo state; add --json
+   2026-06-03   Anubhav Sigdel  de-brand keys; add Capacity (RAM/agent cap)
 */
 
 use clap::Parser;
 use monkey_agents::{doctor, DoctorReport};
+use monkey_core::concurrency::{max_concurrent_agents, AgentBudget, HostCapacity};
 
 #[derive(Parser, Debug, Default)]
 pub struct Args {
@@ -33,11 +35,6 @@ fn print_human(r: &DoctorReport) {
     println!();
     println!("  CLIs");
     println!(
-        "    {} claude   {}",
-        mark(r.claude_present()),
-        version_or_dash(&r.claude_version)
-    );
-    println!(
         "    {} codex    {}",
         mark(r.codex_present()),
         version_or_dash(&r.codex_version)
@@ -49,7 +46,7 @@ fn print_human(r: &DoctorReport) {
     );
     println!();
     println!("  Keys");
-    println!("    {} ANTHROPIC_API_KEY", mark(r.anthropic_key));
+    println!("    {} OPENROUTER_API_KEY", mark(r.openrouter_key));
     println!("    {} OPENAI_API_KEY", mark(r.openai_key));
     println!();
     println!("  Repo");
@@ -60,6 +57,17 @@ fn print_human(r: &DoctorReport) {
         (Some(s), None) => println!("    [info] stack={s:?}"),
         _ => println!("    [info] stack=unknown"),
     }
+    println!();
+    println!("  Capacity");
+    let cap = HostCapacity::detect();
+    let max_agents = max_concurrent_agents(&cap, &AgentBudget::default());
+    println!(
+        "    [info] RAM {avail} MiB free / {total} MiB total   CPUs {cpus}",
+        avail = cap.available_mem_mb,
+        total = cap.total_mem_mb,
+        cpus = cap.logical_cpus,
+    );
+    println!("    [info] max concurrent agents: {max_agents}");
     if !r.notes.is_empty() {
         println!();
         println!("  Notes");

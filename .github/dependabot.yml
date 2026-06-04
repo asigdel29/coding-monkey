@@ -18,3 +18,9 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "ci"
+    ignore:
+      # dtolnay/rust-toolchain pins the action ref to a *Rust version*, not
+      # an action release. Dependabot's semver heuristic mis-reads this and
+      # bumps it to non-existent toolchains (e.g. 1.100, which 404s). The
+      # MSRV is governed by rust-toolchain.toml — bump it there, not here.
+      - dependency-name: "dtolnay/rust-toolchain"

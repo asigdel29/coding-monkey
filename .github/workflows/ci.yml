@@ -73,7 +73,7 @@ jobs:
       # bump from @1.88 → @1.100 was wrong: dtolnay/rust-toolchain's ref
       # is a Rust version, and Rust 1.100 doesn't exist yet (404 from
       # static.rust-lang.org).
-      - uses: dtolnay/rust-toolchain@1.100
+      - uses: dtolnay/rust-toolchain@1.88
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --workspace --all-targets --locked
 
@@ -107,12 +107,12 @@ jobs:
           tmp=$(mktemp -d)
           ./target/release/monkey init "$tmp"
           test -f "$tmp/.monkey/config.json"
-          test -f "$tmp/.monkey/context/CLAUDE.md"
+          test -f "$tmp/.monkey/context/AGENT.md"
           test -f "$tmp/.monkey/tentacles/main/todo.md"
       - name: doctor (non-blocking — env not configured)
         run: ./target/release/monkey doctor || true
       - name: models lists registered providers
         run: |
           ./target/release/monkey models | tee /tmp/models.txt
-          grep -q "Claude" /tmp/models.txt
+          grep -q "OpenRouter" /tmp/models.txt
           grep -q "GPT" /tmp/models.txt

@@ -9,6 +9,7 @@
    History
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  initial port from packages/core/src/core/types.ts
+   2026-06-03   Anubhav Sigdel  add default_provider; de-brand agent-kind docs
 */
 
 use chrono::{DateTime, Utc};
@@ -169,9 +170,12 @@ pub struct Budget {
 /// Top-level orchestrator config (deserialized from `.monkey/config.json`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrchestratorConfig {
-    /// Default agent kind (`auto`, `claude`, `codex`).
+    /// Default agent kind (`auto`, `codex`).
     #[serde(default = "default_agent")]
     pub default_agent: String,
+    /// Default LLM provider (`openrouter`, `openai`).
+    #[serde(default = "default_provider")]
+    pub default_provider: String,
     /// Default model tier (`fast`, `balanced`, `powerful`).
     #[serde(default = "default_tier")]
     pub default_tier: ModelTierStr,
@@ -189,6 +193,9 @@ pub type ModelTierStr = String;
 fn default_agent() -> String {
     "auto".into()
 }
+fn default_provider() -> String {
+    "openrouter".into()
+}
 fn default_tier() -> ModelTierStr {
     "balanced".into()
 }
@@ -200,6 +207,7 @@ impl Default for OrchestratorConfig {
     fn default() -> Self {
         Self {
             default_agent: default_agent(),
+            default_provider: default_provider(),
             default_tier: default_tier(),
             fail_on: default_fail_on(),
             budget: Budget::default(),

@@ -136,7 +136,7 @@ impl Skill for Investigate {
             pick_candidate_files(&ctx.cwd, &input.symptom, &input.hints, input.max_snippets);
         let snippets = build_snippet_section(&ctx.cwd, &candidates, input.snippet_lines);
 
-        let llm = LLMClient::new(ctx.provider.unwrap_or(Provider::Anthropic));
+        let llm = LLMClient::new(ctx.provider.unwrap_or(Provider::OpenRouter));
         let phase_limit = std::cmp::min(PHASES.len(), input.max_escalations as usize + 1);
 
         let mut transcripts: Vec<(String, String, String)> = Vec::new();

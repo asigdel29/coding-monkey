@@ -9,6 +9,7 @@
    History
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  initial port from packages/core/src/models/
+   2026-06-03   Anubhav Sigdel  de-brand catalogue → OpenRouter/OpenAI defaults
 */
 
 use serde::{Deserialize, Serialize};
@@ -33,8 +34,10 @@ pub enum ModelTier {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Provider {
-    /// Anthropic (Claude family).
-    Anthropic,
+    /// OpenRouter — a single API key that proxies to many upstream
+    /// models. OpenAI-compatible wire format. The default for
+    /// clone-and-run setups.
+    OpenRouter,
     /// OpenAI (GPT family).
     Openai,
 }
@@ -193,31 +196,31 @@ fn builtin_models() -> Vec<ModelSpec> {
     use Provider::*;
     vec![
         ModelSpec {
-            id: "claude-haiku-4-5".into(),
-            display_name: "Claude Haiku 4.5".into(),
-            provider: Anthropic,
+            id: "google/gemini-2.0-flash-001".into(),
+            display_name: "Gemini 2.0 Flash (OpenRouter)".into(),
+            provider: OpenRouter,
             tier: Fast,
-            input_cost_per_1k: 0.001,
-            output_cost_per_1k: 0.005,
-            context_window: 200_000,
+            input_cost_per_1k: 0.0001,
+            output_cost_per_1k: 0.0004,
+            context_window: 1_000_000,
         },
         ModelSpec {
-            id: "claude-sonnet-4-6".into(),
-            display_name: "Claude Sonnet 4.6".into(),
-            provider: Anthropic,
+            id: "openai/gpt-4o".into(),
+            display_name: "GPT-4o (OpenRouter)".into(),
+            provider: OpenRouter,
             tier: Balanced,
-            input_cost_per_1k: 0.003,
-            output_cost_per_1k: 0.015,
-            context_window: 1_000_000,
+            input_cost_per_1k: 0.0025,
+            output_cost_per_1k: 0.01,
+            context_window: 128_000,
         },
         ModelSpec {
-            id: "claude-opus-4-7".into(),
-            display_name: "Claude Opus 4.7".into(),
-            provider: Anthropic,
+            id: "meta-llama/llama-3.1-405b-instruct".into(),
+            display_name: "Llama 3.1 405B (OpenRouter)".into(),
+            provider: OpenRouter,
             tier: Powerful,
-            input_cost_per_1k: 0.015,
-            output_cost_per_1k: 0.075,
-            context_window: 1_000_000,
+            input_cost_per_1k: 0.003,
+            output_cost_per_1k: 0.003,
+            context_window: 128_000,
         },
         ModelSpec {
             id: "gpt-5-mini".into(),

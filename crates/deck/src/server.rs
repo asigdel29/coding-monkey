@@ -21,6 +21,8 @@
    History
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  full Rust port from packages/deck/src/server.ts
+   2026-06-03   Anubhav Sigdel  enforce RAM/CPU agent cap on terminal spawn;
+                                 allow 'wasm-unsafe-eval' in CSP so the UI boots
 */
 
 use anyhow::Context;
@@ -89,7 +91,7 @@ impl Default for DeckOpts {
             cwd: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             host: "127.0.0.1".into(),
             port: 8787,
-            agent: "claude".into(),
+            agent: "codex".into(),
             agent_args: Vec::new(),
             token_ttl: Duration::from_secs(8 * 60 * 60),
             token: None,
@@ -152,6 +154,10 @@ struct AppState {
     tentacles: TentacleStore,
     audit: Mutex<AuditLogger>,
     terminals: Mutex<HashMap<String, monkey_agents::AgentTerminal>>,
+    /// Most agent terminals allowed at once, derived from host RAM/CPU at
+    /// startup (see `monkey_core::concurrency`). Spawns past this are
+    /// rejected so the box never thrashes.
+    max_agents: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -233,6 +239,10 @@ pub async fn start_deck(opts: DeckOpts) -> anyhow::Result<DeckHandle> {
         tentacles: TentacleStore::new(&opts.cwd),
         audit: Mutex::new(audit),
         terminals: Mutex::new(HashMap::new()),
+        max_agents: monkey_core::concurrency::max_concurrent_agents(
+            &monkey_core::concurrency::HostCapacity::detect(),
+            &monkey_core::concurrency::AgentBudget::default(),
+        ),
     });
 
     let mut app = Router::new()
@@ -339,8 +349,11 @@ fn apply_security_headers(headers: &mut HeaderMap, state: &AppState) {
         HeaderValue::from_static("geolocation=(), microphone=(), camera=()"),
     );
     let csp = format!(
+        // 'wasm-unsafe-eval' is required for the browser to instantiate the
+        // leptos WASM bundle; without it Chrome blocks compilation and the
+        // UI never boots (blank page, no console error).
         "default-src 'none'; \
-         script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; \
+         script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; \
          style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; \
          connect-src 'self' ws://{host}:{port} wss://{host}:{port}; \
          img-src 'self' data:; \
@@ -534,9 +547,10 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
             let payload = serde_json::json!({
                 "type": "ready",
                 "cwd": state.cwd.display().to_string(),
+                "max_agents": state.max_agents,
                 "tentacles": state.tentacles.list(),
             });
-            let _ = sender.send(Message::Text(payload.to_string())).await;
+            let _ = sender.send(Message::Text(payload.to_string().into())).await;
             continue;
         }
 
@@ -652,6 +666,23 @@ async fn dispatch(
             .await?;
         }
         WsMsg::TermSpawn { tentacle_id, .. } => {
+            // Enforce the host's agent concurrency cap before spawning so a
+            // client can't oversubscribe the machine into thrashing.
+            let live = state.terminals.lock().await.len();
+            if live >= state.max_agents {
+                send_json(
+                    sender,
+                    serde_json::json!({
+                        "type": "term.error",
+                        "error": format!(
+                            "agent capacity reached ({live}/{}). Close a terminal or run on a larger host.",
+                            state.max_agents
+                        ),
+                    }),
+                )
+                .await?;
+                return Ok(());
+            }
             let opts = monkey_agents::SpawnOpts {
                 kind: monkey_agents::AgentKind::Auto,
                 cwd: state.cwd.clone(),
@@ -738,7 +769,7 @@ async fn send_json(
     sender: &mut futures::stream::SplitSink<WebSocket, Message>,
     payload: serde_json::Value,
 ) -> Result<(), axum::Error> {
-    sender.send(Message::Text(payload.to_string())).await
+    sender.send(Message::Text(payload.to_string().into())).await
 }
 
 fn kind_label(msg: &WsMsg) -> &'static str {

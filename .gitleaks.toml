@@ -22,7 +22,7 @@ paths = [
     # asserts it's masked out. Real keys here would defeat the test.
     '''crates/agents/src/redact\.rs''',
     # CSO skill's "looks_like_secret" tests — uses well-known fake AWS /
-    # Anthropic / PEM headers as positive cases.
+    # API-key / PEM headers as positive cases.
     '''crates/skills/src/skills/cso\.rs''',
     # Deck WS schema tests — uses a 16-hex placeholder as an auth token.
     '''crates/deck/src/schemas\.rs''',

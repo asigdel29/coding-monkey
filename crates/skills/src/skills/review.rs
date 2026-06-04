@@ -140,7 +140,7 @@ impl Skill for Review {
         }
 
         let user_prompt = build_user_prompt(&cwd, &branch, &base, &files, &commits, &diff);
-        let primary_provider = ctx.provider.unwrap_or(Provider::Anthropic);
+        let primary_provider = ctx.provider.unwrap_or(Provider::OpenRouter);
         let primary = LLMClient::new(primary_provider);
 
         let mut findings: Vec<SkillFinding> = Vec::new();
@@ -192,8 +192,8 @@ impl Skill for Review {
         // Optional second opinion.
         if input.second_opinion {
             let alt_provider = match primary_provider {
-                Provider::Anthropic => Provider::Openai,
-                Provider::Openai => Provider::Anthropic,
+                Provider::OpenRouter => Provider::Openai,
+                Provider::Openai => Provider::OpenRouter,
             };
             let alt = LLMClient::new(alt_provider);
             match alt

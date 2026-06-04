@@ -2,11 +2,12 @@
    File: crates/engulf/src/llm.rs
 
    Purpose
-   Minimal HTTP clients for the Anthropic Messages API and the OpenAI
-   Chat Completions API. Engulf uses these for the security/docs/deploy
-   phases. Skills will share this module via re-export from monkey-engulf
-   until enough callers exist to justify lifting it into a dedicated
-   crate.
+   Minimal HTTP client for the OpenAI-compatible Chat Completions API.
+   The same wire format serves both OpenAI directly and OpenRouter (one
+   key, many upstream models), so a single code path covers both. Engulf
+   uses this for the security/docs/deploy phases. Skills share the module
+   via re-export from monkey-engulf until enough callers exist to justify
+   lifting it into a dedicated crate.
 
    Why hand-roll instead of using a vendor SDK
    - Vendor SDKs pull in heavy async/codegen dependencies
@@ -16,28 +17,49 @@
 
    Design
    - Errors are anyhow::Result so callers can `?` cleanly
-   - Provider authentication is read from $ANTHROPIC_API_KEY / $OPENAI_API_KEY
-     unless an explicit key is passed
-   - Response text is unwrapped from the first content/message block
+   - Provider authentication is read from the provider's key env var
+     ($OPENROUTER_API_KEY / $OPENAI_API_KEY) unless a key is passed
+   - Response text is unwrapped from the first message choice
    - Markdown JSON fences (```json … ```) are stripped before parse
 
    History
    Date         Author          Changes
-   2026-05-05   Anubhav Sigdel  initial Rust port — minimal Anthropic +
-                                 OpenAI clients used by the security phase
+   2026-05-05   Anubhav Sigdel  initial Rust port — minimal LLM client used
+                                 by the security phase
+   2026-06-03   Anubhav Sigdel  collapse to one OpenAI-compatible path;
+                                 add OpenRouter; drop bespoke provider clients
 */
 
 use anyhow::{anyhow, Context};
 use serde::Deserialize;
 use std::time::Duration;
 
-/// Provider knobs.
+/// Provider knobs. Both speak the OpenAI Chat Completions wire format.
 #[derive(Debug, Clone, Copy)]
 pub enum Provider {
-    /// Anthropic — `https://api.anthropic.com/v1/messages`.
-    Anthropic,
+    /// OpenRouter — `https://openrouter.ai/api/v1/chat/completions`.
+    /// One key proxies to many upstream models.
+    OpenRouter,
     /// OpenAI — `https://api.openai.com/v1/chat/completions`.
     Openai,
+}
+
+impl Provider {
+    /// Chat-completions endpoint for this provider.
+    fn endpoint(self) -> &'static str {
+        match self {
+            Provider::OpenRouter => "https://openrouter.ai/api/v1/chat/completions",
+            Provider::Openai => "https://api.openai.com/v1/chat/completions",
+        }
+    }
+
+    /// Environment variable holding this provider's API key.
+    pub fn key_env(self) -> &'static str {
+        match self {
+            Provider::OpenRouter => "OPENROUTER_API_KEY",
+            Provider::Openai => "OPENAI_API_KEY",
+        }
+    }
 }
 
 /// Generic prompt request. `system` is optional; user prompts are required.
@@ -45,7 +67,7 @@ pub enum Provider {
 pub struct PromptRequest {
     /// Provider to call.
     pub provider: Provider,
-    /// Provider's model id (`claude-haiku-4-5`, `gpt-5-mini`, …).
+    /// Provider's model id (`openai/gpt-4o`, `gpt-5-mini`, …).
     pub model: String,
     /// Optional system prompt.
     pub system: Option<String>,
@@ -64,13 +86,10 @@ pub struct PromptRequest {
 pub async fn complete(req: PromptRequest) -> anyhow::Result<String> {
     let key = match req.api_key.clone() {
         Some(k) => k,
-        None => match req.provider {
-            Provider::Anthropic => std::env::var("ANTHROPIC_API_KEY")
-                .map_err(|_| anyhow!("ANTHROPIC_API_KEY not set"))?,
-            Provider::Openai => {
-                std::env::var("OPENAI_API_KEY").map_err(|_| anyhow!("OPENAI_API_KEY not set"))?
-            }
-        },
+        None => {
+            let env = req.provider.key_env();
+            std::env::var(env).map_err(|_| anyhow!("{env} not set"))?
+        }
     };
 
     let client = reqwest::Client::builder()
@@ -78,64 +97,14 @@ pub async fn complete(req: PromptRequest) -> anyhow::Result<String> {
         .build()
         .context("build http client")?;
 
-    match req.provider {
-        Provider::Anthropic => anthropic(&client, &key, &req).await,
-        Provider::Openai => openai(&client, &key, &req).await,
-    }
+    chat_completions(&client, &key, &req).await
 }
 
-// ─── Anthropic ──────────────────────────────────────────────────────────────
+// ─── OpenAI-compatible Chat Completions ──────────────────────────────────────
 
-async fn anthropic(
-    client: &reqwest::Client,
-    key: &str,
-    req: &PromptRequest,
-) -> anyhow::Result<String> {
-    let body = serde_json::json!({
-        "model": req.model,
-        "max_tokens": req.max_tokens,
-        "system": req.system,
-        "messages": [{ "role": "user", "content": req.user }],
-    });
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .context("anthropic request failed")?;
-    let status = resp.status();
-    let raw = resp.text().await.context("read anthropic body")?;
-    if !status.is_success() {
-        return Err(anyhow!("anthropic {status}: {raw}"));
-    }
-    let parsed: AnthropicResp =
-        serde_json::from_str(&raw).with_context(|| format!("anthropic decode: {raw}"))?;
-    parsed
-        .content
-        .into_iter()
-        .find_map(|b| if b.kind == "text" { Some(b.text) } else { None })
-        .ok_or_else(|| anyhow!("anthropic response had no text block"))
-}
-
-#[derive(Deserialize)]
-struct AnthropicResp {
-    content: Vec<AnthropicBlock>,
-}
-
-#[derive(Deserialize)]
-struct AnthropicBlock {
-    #[serde(rename = "type")]
-    kind: String,
-    #[serde(default)]
-    text: String,
-}
-
-// ─── OpenAI ─────────────────────────────────────────────────────────────────
-
-async fn openai(
+/// POST a single non-streaming chat completion to the request's provider
+/// endpoint and return the first choice's text.
+async fn chat_completions(
     client: &reqwest::Client,
     key: &str,
     req: &PromptRequest,
@@ -152,26 +121,26 @@ async fn openai(
         "messages": messages,
     });
     let resp = client
-        .post("https://api.openai.com/v1/chat/completions")
+        .post(req.provider.endpoint())
         .bearer_auth(key)
         .header("content-type", "application/json")
         .json(&body)
         .send()
         .await
-        .context("openai request failed")?;
+        .context("chat completion request failed")?;
     let status = resp.status();
-    let raw = resp.text().await.context("read openai body")?;
+    let raw = resp.text().await.context("read response body")?;
     if !status.is_success() {
-        return Err(anyhow!("openai {status}: {raw}"));
+        return Err(anyhow!("{status}: {raw}"));
     }
     let parsed: OpenAIResp =
-        serde_json::from_str(&raw).with_context(|| format!("openai decode: {raw}"))?;
+        serde_json::from_str(&raw).with_context(|| format!("decode response: {raw}"))?;
     parsed
         .choices
         .into_iter()
         .next()
         .map(|c| c.message.content)
-        .ok_or_else(|| anyhow!("openai response had no choices"))
+        .ok_or_else(|| anyhow!("response had no choices"))
 }
 
 #[derive(Deserialize)]

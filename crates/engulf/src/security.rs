@@ -8,7 +8,7 @@
         promoted to a Finding using a small CWE-tagged category table.
         Deterministic, runs without any API key.
 
-     2. LLM layer — a structured prompt gives Claude (or GPT) a
+     2. LLM layer — a structured prompt gives the model a
         compact view of the project profile (stack, deps count, env
         vars, CI, scanner hints) and asks for a JSON array of
         additional findings. Skipped silently when no key is set so
@@ -20,6 +20,7 @@
    History
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  full Rust port from packages/engulf/src/security.ts;
+   2026-06-03   Anubhav Sigdel  default provider OpenRouter; neutral default model
                                  wires the new `llm` module
 */
 
@@ -172,7 +173,7 @@ pub async fn audit(scan: &ScanResult) -> anyhow::Result<SecurityAuditResult> {
 /// Knobs for [`audit_with`].
 #[derive(Debug, Clone, Default)]
 pub struct AuditOptions {
-    /// Provider to use for the LLM layer. Defaults to Anthropic.
+    /// Provider to use for the LLM layer. Defaults to OpenRouter.
     pub provider: Option<Provider>,
     /// API key override; defaults to env var.
     pub api_key: Option<String>,
@@ -299,13 +300,13 @@ async fn run_llm_layer(
     scan: &ScanResult,
     opts: &AuditOptions,
 ) -> anyhow::Result<Vec<SecurityFinding>> {
-    let provider = opts.provider.unwrap_or(Provider::Anthropic);
+    let provider = opts.provider.unwrap_or(Provider::OpenRouter);
     let llm_provider = match provider {
-        Provider::Anthropic => LlmProvider::Anthropic,
+        Provider::OpenRouter => LlmProvider::OpenRouter,
         Provider::Openai => LlmProvider::Openai,
     };
     let model = opts.model.clone().unwrap_or_else(|| match provider {
-        Provider::Anthropic => "claude-haiku-4-5".into(),
+        Provider::OpenRouter => "google/gemini-2.0-flash-001".into(),
         Provider::Openai => "gpt-5-mini".into(),
     });
     let prompt = build_prompt(scan);

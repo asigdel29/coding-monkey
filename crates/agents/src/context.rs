@@ -10,7 +10,7 @@
        .monkey/context/PROJECT.md
        .monkey/context/CONVENTIONS.md
        .monkey/context/GLOSSARY.md
-       .monkey/context/{CLAUDE,CODEX}.md   (whichever matches kind)
+       .monkey/context/{AGENT,CODEX}.md    (whichever matches kind)
        .monkey/tentacles/<tentacle>/CONTEXT.md
        .monkey/tentacles/<tentacle>/todo.md
 
@@ -21,6 +21,7 @@
    History
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  initial Rust port from packages/agents/src/context.ts
+   2026-06-03   Anubhav Sigdel  per-agent context file → AGENT.md; codex/auto
 */
 
 use serde::{Deserialize, Serialize};
@@ -75,9 +76,8 @@ pub fn assemble_context(cwd: &Path, kind: AgentKind, tentacle_id: &str) -> Assem
     let context = monkey.join("context");
     let agent_file = match kind {
         AgentKind::Codex => "CODEX.md",
-        // Auto and Claude both prefer the Claude file — Auto resolves to
-        // claude when the CLI is present.
-        _ => "CLAUDE.md",
+        // Auto uses the generic agent guidance file.
+        AgentKind::Auto => "AGENT.md",
     };
 
     let candidates: Vec<PathBuf> = vec![
@@ -169,11 +169,11 @@ mod tests {
         let dir = tempdir().unwrap();
         let p = dir.path();
         touch(&p.join(".monkey/context/PROJECT.md"), "project body");
-        touch(&p.join(".monkey/context/CLAUDE.md"), "claude body");
+        touch(&p.join(".monkey/context/AGENT.md"), "agent body");
         // Intentionally omit CONVENTIONS.md, GLOSSARY.md, and tentacle files.
-        let r = assemble_context(p, AgentKind::Claude, "main");
+        let r = assemble_context(p, AgentKind::Auto, "main");
         assert!(r.prompt.contains("project body"));
-        assert!(r.prompt.contains("claude body"));
+        assert!(r.prompt.contains("agent body"));
         assert_eq!(r.files.len(), 2);
         assert!(r.truncated_files.is_empty());
     }
@@ -182,11 +182,11 @@ mod tests {
     fn picks_codex_file_for_codex_kind() {
         let dir = tempdir().unwrap();
         let p = dir.path();
-        touch(&p.join(".monkey/context/CLAUDE.md"), "claude only");
+        touch(&p.join(".monkey/context/AGENT.md"), "agent only");
         touch(&p.join(".monkey/context/CODEX.md"), "codex only");
         let r = assemble_context(p, AgentKind::Codex, "main");
         assert!(r.prompt.contains("codex only"));
-        assert!(!r.prompt.contains("claude only"));
+        assert!(!r.prompt.contains("agent only"));
     }
 
     #[test]

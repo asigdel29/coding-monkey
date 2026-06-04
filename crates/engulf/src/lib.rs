@@ -19,6 +19,7 @@
    2026-05-05   Anubhav Sigdel  scanner phase ported in full; pipeline now
                                  calls CodebaseScanner::scan() during the
                                  `scan` phase
+   2026-06-03   Anubhav Sigdel  provider enum → OpenRouter/OpenAI
 */
 
 #![deny(unsafe_code)]
@@ -93,8 +94,8 @@ pub enum Phase {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Provider {
-    /// Anthropic.
-    Anthropic,
+    /// OpenRouter — one key, many upstream models (OpenAI-compatible).
+    OpenRouter,
     /// OpenAI.
     Openai,
 }

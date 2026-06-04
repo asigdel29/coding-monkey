@@ -8,6 +8,7 @@
    History
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  initial port from cli/src/index.ts (chat command)
+   2026-06-03   Anubhav Sigdel  codex/auto agents only
 */
 
 use clap::Args as ClapArgs;
@@ -16,7 +17,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, ClapArgs, Default)]
 pub struct Args {
-    /// Agent to use: claude | codex | auto.
+    /// Agent to use: codex | auto.
     #[arg(long, default_value = "auto")]
     pub agent: String,
     /// Tentacle scope.
@@ -29,7 +30,6 @@ pub struct Args {
 
 pub async fn run(args: Args, prompt: Option<String>) -> anyhow::Result<()> {
     let kind = match args.agent.as_str() {
-        "claude" => AgentKind::Claude,
         "codex" => AgentKind::Codex,
         _ => AgentKind::Auto,
     };
