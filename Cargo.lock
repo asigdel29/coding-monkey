@@ -2069,6 +2069,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "monkey-runtime"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "monkey-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "monkey-skills"
 version = "0.1.0"
 dependencies = [
@@ -3478,6 +3490,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]
