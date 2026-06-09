@@ -150,7 +150,7 @@ struct AppState {
     scheme: String,
     bound_host: String,
     bound_port: u16,
-    rate: RateLimit,
+    rate: monkey_core::RateLimit,
     tentacles: TentacleStore,
     audit: Mutex<AuditLogger>,
     terminals: Mutex<HashMap<String, monkey_agents::AgentTerminal>>,
@@ -158,12 +158,6 @@ struct AppState {
     /// startup (see `monkey_core::concurrency`). Spawns past this are
     /// rejected so the box never thrashes.
     max_agents: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct RateLimit {
-    per_sec: u32,
-    burst: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -232,7 +226,7 @@ pub async fn start_deck(opts: DeckOpts) -> anyhow::Result<DeckHandle> {
         },
         bound_host: host.clone(),
         bound_port: opts.port,
-        rate: RateLimit {
+        rate: monkey_core::RateLimit {
             per_sec: opts.rate_per_sec,
             burst: opts.rate_burst.max(opts.rate_per_sec),
         },
@@ -450,7 +444,7 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
     let (mut sender, mut receiver) = socket.split();
     let mut authed = false;
     let mut owned: Vec<String> = Vec::new();
-    let mut bucket = TokenBucket::new(state.rate);
+    let mut bucket = monkey_core::TokenBucket::new(state.rate);
 
     audit(&state, "ws.connect", serde_json::json!({})).await;
 
@@ -847,38 +841,6 @@ fn hex_encode(bytes: &[u8]) -> String {
     s
 }
 
-#[derive(Debug)]
-struct TokenBucket {
-    tokens: f64,
-    burst: f64,
-    per_sec: f64,
-    last: Instant,
-}
-
-impl TokenBucket {
-    fn new(rate: RateLimit) -> Self {
-        Self {
-            tokens: rate.burst as f64,
-            burst: rate.burst as f64,
-            per_sec: rate.per_sec as f64,
-            last: Instant::now(),
-        }
-    }
-
-    fn consume(&mut self) -> bool {
-        let now = Instant::now();
-        let dt = now.duration_since(self.last).as_secs_f64();
-        self.tokens = (self.tokens + dt * self.per_sec).min(self.burst);
-        self.last = now;
-        if self.tokens >= 1.0 {
-            self.tokens -= 1.0;
-            true
-        } else {
-            false
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize)]
 struct _ProbeShape {
     _t: String,
@@ -887,29 +849,6 @@ struct _ProbeShape {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn rate_limiter_allows_burst_then_blocks() {
-        let mut b = TokenBucket::new(RateLimit {
-            per_sec: 1,
-            burst: 3,
-        });
-        assert!(b.consume());
-        assert!(b.consume());
-        assert!(b.consume());
-        assert!(!b.consume());
-    }
-
-    #[test]
-    fn rate_limiter_refills_over_time() {
-        let mut b = TokenBucket::new(RateLimit {
-            per_sec: 1000,
-            burst: 1,
-        });
-        assert!(b.consume());
-        std::thread::sleep(Duration::from_millis(20));
-        assert!(b.consume());
-    }
 
     #[test]
     fn constant_time_eq_handles_unequal_lengths() {

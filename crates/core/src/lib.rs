@@ -12,6 +12,7 @@
    2026-05-05   Anubhav Sigdel  initial Rust port; types + errors + model
                                  registry + repo detector
    2026-06-03   Anubhav Sigdel  add concurrency module (RAM/CPU agent cap)
+   2026-06-09   Anubhav Sigdel  add ratelimit module (shared token bucket)
 */
 
 #![deny(missing_debug_implementations)]
@@ -25,6 +26,7 @@
 //! - [`models`] — model registry + tier selector
 //! - [`repos`] — repo detection (stack, complexity)
 //! - [`concurrency`] — RAM/CPU-aware agent concurrency cap
+//! - [`ratelimit`] — shared token-bucket rate limiter
 //! - [`ids`] — short prefixed IDs
 
 /// RAM/CPU-aware policy for how many agents may run at once.
@@ -37,10 +39,13 @@ pub mod ids;
 pub mod models;
 /// Heuristic detection of a repo's tech stack and complexity from disk.
 pub mod repos;
+/// Shared token-bucket rate limiter (deck WS limits, provider call limits).
+pub mod ratelimit;
 /// Serde data models shared across the workspace (tasks, sessions, configs).
 pub mod types;
 
 pub use concurrency::{max_concurrent_agents, AgentBudget, HostCapacity};
+pub use ratelimit::{RateLimit, TokenBucket};
 pub use errors::Error;
 pub use ids::generate_id;
 pub use models::{tier_for_task, ModelRegistry, ModelSelector, ModelSpec, ModelTier, Provider};
