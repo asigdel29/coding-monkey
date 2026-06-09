@@ -13,6 +13,7 @@
                                  registry + repo detector
    2026-06-03   Anubhav Sigdel  add concurrency module (RAM/CPU agent cap)
    2026-06-09   Anubhav Sigdel  add ratelimit module (shared token bucket)
+   2026-06-09   Anubhav Sigdel  add watchdog module (RAM-floor admission)
 */
 
 #![deny(missing_debug_implementations)]
@@ -26,6 +27,7 @@
 //! - [`models`] — model registry + tier selector
 //! - [`repos`] — repo detection (stack, complexity)
 //! - [`concurrency`] — RAM/CPU-aware agent concurrency cap
+//! - [`watchdog`] — live RAM-floor admission control
 //! - [`ratelimit`] — shared token-bucket rate limiter
 //! - [`ids`] — short prefixed IDs
 
@@ -43,9 +45,12 @@ pub mod repos;
 pub mod ratelimit;
 /// Serde data models shared across the workspace (tasks, sessions, configs).
 pub mod types;
+/// Live RAM-floor admission control for native-agent scheduling.
+pub mod watchdog;
 
 pub use concurrency::{max_concurrent_agents, AgentBudget, AgentClass, HostCapacity};
 pub use ratelimit::{RateLimit, TokenBucket};
+pub use watchdog::{AdmissionDenied, MemoryWatchdog};
 pub use errors::Error;
 pub use ids::generate_id;
 pub use models::{tier_for_task, ModelRegistry, ModelSelector, ModelSpec, ModelTier, Provider};
