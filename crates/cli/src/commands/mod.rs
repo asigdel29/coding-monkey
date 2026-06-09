@@ -17,6 +17,7 @@ pub mod cso;
 pub mod deck;
 pub mod doctor;
 pub mod engulf;
+pub mod import;
 pub mod init;
 pub mod investigate;
 pub mod models;

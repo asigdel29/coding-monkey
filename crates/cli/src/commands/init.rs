@@ -35,6 +35,14 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     std::fs::create_dir_all(monkey.join("tentacles").join("main"))?;
     std::fs::create_dir_all(monkey.join("plans"))?;
 
+    // Adopt any existing agent prompts (CLAUDE.md, AGENTS.md, …) before
+    // writing templates, so a user's current setup is carried over and the
+    // templates only fill the gaps.
+    let imported = crate::commands::import::import_existing_prompts(&cwd, false)?;
+    for (src, dest) in &imported.imported {
+        eprintln!("imported {src} -> .monkey/context/{dest}");
+    }
+
     write_if_missing(&monkey.join("config.json"), DEFAULT_CONFIG)?;
     write_if_missing(&monkey.join("context").join("PROJECT.md"), TEMPLATE_PROJECT)?;
     write_if_missing(
