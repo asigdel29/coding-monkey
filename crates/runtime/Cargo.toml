@@ -18,6 +18,8 @@ tokio-util.workspace = true
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+reqwest.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
