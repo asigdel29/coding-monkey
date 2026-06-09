@@ -179,14 +179,14 @@ impl NativeLlm {
     /// Honors `cancel`: when it fires, the HTTP stream is dropped and
     /// whatever has accumulated so far is returned, so the caller can stop
     /// promptly rather than waiting for the full generation.
-    pub async fn chat_stream<F: FnMut(&str)>(
+    pub async fn chat_stream(
         &self,
         model: &ModelSpec,
         messages: &[Message],
         tools: &[serde_json::Value],
         max_output_tokens: u32,
         cancel: &CancellationToken,
-        mut on_delta: F,
+        on_delta: &mut (dyn FnMut(&str) + Send),
     ) -> Result<ChatResult, LlmError> {
         let (endpoint, key_env) = endpoint_for(model.provider);
         let key =
@@ -220,7 +220,7 @@ impl NativeLlm {
                 item = stream.next() => match item {
                     Some(Ok(bytes)) => {
                         buf.push_str(&String::from_utf8_lossy(&bytes));
-                        if drain_sse_lines(&mut buf, &mut acc, &mut on_delta)? {
+                        if drain_sse_lines(&mut buf, &mut acc, on_delta)? {
                             break; // saw [DONE]
                         }
                     }
@@ -237,10 +237,10 @@ impl NativeLlm {
 /// partial trailing line in place. Feeds each `data:` payload to `acc` and
 /// forwards content deltas to `on_delta`. @return `true` once `[DONE]` is
 /// seen.
-fn drain_sse_lines<F: FnMut(&str)>(
+fn drain_sse_lines(
     buf: &mut String,
     acc: &mut StreamAccumulator,
-    on_delta: &mut F,
+    on_delta: &mut (dyn FnMut(&str) + Send),
 ) -> Result<bool, LlmError> {
     while let Some(nl) = buf.find('\n') {
         let line = buf[..nl].trim().to_string();

@@ -19,6 +19,7 @@
    2026-06-09   Anubhav Sigdel  add fs_guard + read_file/list_dir tools
    2026-06-09   Anubhav Sigdel  add write_file/search tools + fs write locks
    2026-06-09   Anubhav Sigdel  add run_command tool (allowlisted, no shell)
+   2026-06-09   Anubhav Sigdel  add agent loop (run_agent + ChatBackend)
 */
 
 #![deny(unsafe_code)]
@@ -33,7 +34,10 @@
 //! - [`llm`] — tool-calling chat client over a shared HTTP pool
 //! - [`fs_guard`] — working-directory path jail for file tools
 //! - [`tools`] — built-in agent tools
+//! - [`agent`] — the agent loop driving tools + LLM to completion
 
+/// The agent loop and the `ChatBackend` abstraction it runs on.
+pub mod agent;
 /// Agent progress event stream.
 pub mod event;
 /// Working-directory path jail for filesystem tools.
@@ -47,8 +51,10 @@ pub mod tool;
 /// Built-in agent tools.
 pub mod tools;
 
+pub use agent::{run_agent, ChatBackend};
 pub use event::AgentEvent;
 pub use fs_guard::{FsError, FsGuard};
 pub use llm::{ChatResult, LlmError, NativeLlm};
 pub use state::{AgentConfig, AgentOutcome, AgentState, Message, Role, ToolCall};
 pub use tool::{Tool, ToolCtx, ToolRef, ToolRegistry, ToolResult};
+pub use tools::default_tools;
