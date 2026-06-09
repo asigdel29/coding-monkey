@@ -53,6 +53,31 @@ and host capacity, and tells you the next step.
 | **OpenRouter** (default) | `OPENROUTER_API_KEY` | One key, many upstream models. Recommended. |
 | **OpenAI** | `OPENAI_API_KEY` | Direct to OpenAI. |
 
+### Self-hosted models
+
+Point `monkey` at your own OpenAI-compatible server — [Ollama](https://ollama.com),
+llama.cpp's `server`, [vLLM](https://github.com/vllm-project/vllm), or LM Studio —
+with no API cost. Great on a Pi or LAN.
+
+```bash
+# 1. Run a local model (example: Ollama)
+ollama serve &
+ollama pull qwen2.5-coder
+
+# 2. Point monkey at it (base or full URL both work; key usually not needed)
+export MONKEY_SELF_HOSTED_URL=http://localhost:11434      # → /v1/chat/completions
+# export MONKEY_SELF_HOSTED_KEY=...                        # only if your server needs one
+
+# 3. Select the self-hosted provider in .monkey/config.json
+#    "default_provider": "self-hosted"
+monkey doctor       # shows the configured self-hosted endpoint
+monkey deck         # native agents now run against your local model
+```
+
+| Provider value | Env | Notes |
+| --- | --- | --- |
+| `self-hosted` | `MONKEY_SELF_HOSTED_URL` (+ optional `MONKEY_SELF_HOSTED_KEY`) | Any OpenAI-compatible endpoint. No key required for most local servers. |
+
 Any provider that exposes the OpenAI Chat Completions API works. Pick the default
 provider and model in `.monkey/config.json`:
 

@@ -40,6 +40,8 @@ pub struct DoctorReport {
     pub openrouter_key: bool,
     /// Whether `OPENAI_API_KEY` is set.
     pub openai_key: bool,
+    /// Configured self-hosted endpoint URL (`MONKEY_SELF_HOSTED_URL`), if any.
+    pub self_hosted_url: Option<String>,
     /// Working directory the report was produced in.
     pub cwd: PathBuf,
     /// Whether `cwd` (or an ancestor) is inside a git work tree.
@@ -92,6 +94,7 @@ pub fn doctor_at(cwd: &Path) -> DoctorReport {
     let git_version = bin_version("git");
     let openrouter_key = std::env::var("OPENROUTER_API_KEY").is_ok();
     let openai_key = std::env::var("OPENAI_API_KEY").is_ok();
+    let self_hosted_url = std::env::var(monkey_core::endpoints::SELF_HOSTED_URL_ENV).ok();
 
     let in_git_repo = find_git_root(cwd).is_some();
     let monkey_initialized = cwd.join(".monkey").is_dir();
@@ -140,6 +143,7 @@ pub fn doctor_at(cwd: &Path) -> DoctorReport {
         git_version,
         openrouter_key,
         openai_key,
+        self_hosted_url,
         cwd: cwd.to_path_buf(),
         in_git_repo,
         monkey_initialized,
@@ -227,6 +231,7 @@ mod tests {
             git_version: None,
             openrouter_key: false,
             openai_key: false,
+            self_hosted_url: None,
             cwd: PathBuf::from("."),
             in_git_repo: false,
             monkey_initialized: false,

@@ -71,6 +71,22 @@ monkey deck             # dashboard at http://127.0.0.1:8787 — spawn agents
 clamped to 128). Spawns past it are refused rather than thrashing the box; the
 watchdog also pauses admission if free RAM drops near the floor.
 
+## Run a local model on the Pi (no API cost)
+
+A Pi 5 can serve a small coding model locally. Point native agents at it:
+
+```bash
+ollama serve & ollama pull qwen2.5-coder:3b
+export MONKEY_SELF_HOSTED_URL=http://localhost:11434
+# in .monkey/config.json:  "default_provider": "self-hosted"
+monkey deck
+```
+
+A single local model serializes generation, so it suits a handful of agents
+rather than 100; for high fan-out, keep native agents on a hosted provider and
+use the local model for cheaper, private work. See the self-hosted section in
+the [README](../README.md#self-hosted-models).
+
 ## What bounds concurrency on a Pi
 
 - **RAM** — the memory watchdog (`crates/core/src/watchdog.rs`) holds back new
