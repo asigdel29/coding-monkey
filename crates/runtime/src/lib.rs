@@ -20,6 +20,7 @@
    2026-06-09   Anubhav Sigdel  add write_file/search tools + fs write locks
    2026-06-09   Anubhav Sigdel  add run_command tool (allowlisted, no shell)
    2026-06-09   Anubhav Sigdel  add agent loop (run_agent + ChatBackend)
+   2026-06-09   Anubhav Sigdel  add provider limiter (shared 429 backoff)
 */
 
 #![deny(unsafe_code)]
@@ -32,6 +33,7 @@
 //! - [`state`] — transcript messages, run config, and outcome
 //! - [`event`] — the progress event stream an agent emits
 //! - [`llm`] — tool-calling chat client over a shared HTTP pool
+//! - [`limiter`] — per-provider rate limiting with shared 429 backoff
 //! - [`fs_guard`] — working-directory path jail for file tools
 //! - [`tools`] — built-in agent tools
 //! - [`agent`] — the agent loop driving tools + LLM to completion
@@ -44,6 +46,8 @@ pub mod event;
 pub mod fs_guard;
 /// Tool-calling LLM chat client.
 pub mod llm;
+/// Per-provider rate limiting and shared 429 backoff.
+pub mod limiter;
 /// Conversation state: transcript, config, outcome.
 pub mod state;
 /// Tool interface, execution context, and registry.
@@ -54,6 +58,7 @@ pub mod tools;
 pub use agent::{run_agent, ChatBackend};
 pub use event::AgentEvent;
 pub use fs_guard::{FsError, FsGuard};
+pub use limiter::{LimiterConfig, ProviderLimiter};
 pub use llm::{ChatResult, LlmError, NativeLlm};
 pub use state::{AgentConfig, AgentOutcome, AgentState, Message, Role, ToolCall};
 pub use tool::{Tool, ToolCtx, ToolRef, ToolRegistry, ToolResult};
