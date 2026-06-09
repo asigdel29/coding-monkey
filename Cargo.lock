@@ -2073,6 +2073,7 @@ name = "monkey-runtime"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures",
  "monkey-core",
  "reqwest",
  "serde",

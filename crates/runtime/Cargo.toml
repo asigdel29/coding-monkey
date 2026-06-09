@@ -14,8 +14,10 @@ path = "src/lib.rs"
 
 [dependencies]
 monkey-core = { path = "../core" }
+tokio.workspace = true
 tokio-util.workspace = true
 async-trait.workspace = true
+futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 reqwest.workspace = true
