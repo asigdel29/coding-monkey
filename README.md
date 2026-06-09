@@ -17,10 +17,13 @@ export OPENROUTER_API_KEY=sk-or-v1-...     # or: export OPENAI_API_KEY=sk-...
 
 # 3. Drop into a repo and go
 cd your-project
-monkey init        # scaffold .monkey/
-monkey doctor      # check keys, git, and how many agents your box can run
-monkey deck        # open the web dashboard at http://127.0.0.1:8787
+monkey setup       # scaffold .monkey/, import existing prompts, run diagnostics
+monkey deck        # open the dashboard — spawn native agents (100+ on a Pi 5)
 ```
+
+`monkey setup` is the one-command on-ramp: it scaffolds `.monkey/`, imports any
+agent prompts you already keep (`CLAUDE.md`, `AGENTS.md`, …), checks your keys
+and host capacity, and tells you the next step.
 
 ---
 
@@ -66,27 +69,38 @@ See the built-in model lineup with `monkey models`.
 
 ---
 
-## Scaling agents to your machine
+## Two kinds of agent
 
-`monkey deck` runs as many agent terminals as your hardware can sustain. At
-startup it derives a cap from free RAM and CPU count:
+| | **Native agents** (default) | **PTY harness agents** |
+| --- | --- | --- |
+| What runs | An in-process async task driving the LLM directly | An external CLI in a PTY (`codex`, `claude`, `hermes`) |
+| Footprint | ~10 MiB each, network-bound | ~100–300 MiB each |
+| Concurrency | **100+ on a Raspberry Pi 5** | ~10 on a Pi |
+| Use for | Scale, throughput, running on small hardware | Full local power on a big machine |
 
-```
-max agents = min( free_RAM × 75% ÷ ~512 MiB per agent,  CPUs × 4 )   (at least 1)
-```
+Native agents are how `monkey` runs 100+ agents at once on modest hardware: each
+is a lightweight task that spends most of its life waiting on the model API, so
+the limit is RAM and the provider's rate limit, not CPU. The deck spawns them
+through a scheduler bounded by a live memory watchdog and a per-provider limiter
+that backs the whole fleet off together on a `429` (no retry storms).
 
-Spawns past the cap are refused rather than thrashing the machine. Check your
-number any time:
+**Bring your own agent.** If you already use Codex, Claude Code, or Hermes,
+`monkey` detects them (`monkey doctor`) and can spawn them as PTY harnesses, and
+`monkey import` pulls your existing `CLAUDE.md` / `AGENTS.md` prompts into
+`.monkey/context/`.
+
+Check your host's ceilings any time:
 
 ```bash
 monkey doctor
 #   Capacity
-#     [info] RAM 12480 MiB free / 32768 MiB total   CPUs 10
-#     [info] max concurrent agents: 18
+#     [info] RAM 6400 MiB free / 8192 MiB total   CPUs 4
+#     [info] max native agents: 128   max PTY agents: 12
 ```
 
-Tune the per-agent budget or set a hard ceiling via `AgentBudget` in
-`crates/core/src/concurrency.rs`.
+The ceilings come from `AgentBudget::native()` / `::pty()` in
+`crates/core/src/concurrency.rs`. See **[docs/RASPBERRY_PI.md](docs/RASPBERRY_PI.md)**
+for running on a Pi.
 
 ---
 
@@ -96,7 +110,9 @@ Run `monkey <command> --help` for full flags.
 
 | Command | What it does |
 | --- | --- |
+| `monkey setup` | One-command onboarding: scaffold, import prompts, diagnose, next steps. |
 | `monkey init [path]` | Scaffold `.monkey/` (context, config, default tentacle). |
+| `monkey import [path]` | Import existing agent prompts (`CLAUDE.md`, `AGENTS.md`, …) into `.monkey/`. |
 | `monkey engulf [path]` | Scan the repo and write context files agents will read. |
 | `monkey chat [prompt]` | Interactive REPL with an agent, using the assembled context. |
 | `monkey deck` | Web dashboard: multiple agent terminals with tentacle contexts. |
@@ -160,8 +176,9 @@ Eight crates in a Cargo workspace:
 
 | Crate | Role |
 | --- | --- |
-| `monkey-core` | Types, errors, model registry, repo detection, agent concurrency cap. |
-| `monkey-agents` | Context assembly, secret redaction, audit log, PTY agent spawn. |
+| `monkey-core` | Types, errors, model registry, repo detection, concurrency cap, memory watchdog, rate limiter. |
+| `monkey-agents` | Context assembly, secret redaction, audit log, PTY harness spawn (codex/claude-code/hermes). |
+| `monkey-runtime` | Native in-process agent engine: tools, agent loop, provider limiter, scheduler. |
 | `monkey-engulf` | Repo scanner, security audit, deployer, knowledge vault. |
 | `monkey-skills` | review / investigate / cso / ship skills + registry. |
 | `monkey-pentest-agent` | Pre-push hook + native-Rust pentest engine. |
