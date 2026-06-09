@@ -779,6 +779,19 @@ async fn dispatch(
                 audit(state, "term.kill", serde_json::json!({ "id": id })).await;
             }
         }
+        WsMsg::AgentSpawn { .. } | WsMsg::AgentCancel { .. } | WsMsg::AgentList => {
+            // Native-agent execution is wired in the next change; the schema
+            // and routing land here first so the protocol is reviewable on
+            // its own.
+            send_json(
+                sender,
+                serde_json::json!({
+                    "type": "agent.error",
+                    "error": "native agents are not yet enabled on this build",
+                }),
+            )
+            .await?;
+        }
     }
     Ok(())
 }
@@ -804,6 +817,9 @@ fn kind_label(msg: &WsMsg) -> &'static str {
         WsMsg::TermInput { .. } => "term.input",
         WsMsg::TermResize { .. } => "term.resize",
         WsMsg::TermKill { .. } => "term.kill",
+        WsMsg::AgentSpawn { .. } => "agent.spawn",
+        WsMsg::AgentCancel { .. } => "agent.cancel",
+        WsMsg::AgentList => "agent.list",
     }
 }
 
