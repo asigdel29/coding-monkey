@@ -74,11 +74,9 @@ pub fn assemble_context(cwd: &Path, kind: AgentKind, tentacle_id: &str) -> Assem
     }
 
     let context = monkey.join("context");
-    let agent_file = match kind {
-        AgentKind::Codex => "CODEX.md",
-        // Auto uses the generic agent guidance file.
-        AgentKind::Auto => "AGENT.md",
-    };
+    // Each harness can carry its own guidance file (CODEX.md, CLAUDE.md,
+    // HERMES.md); Auto uses the generic AGENT.md.
+    let agent_file = kind.context_file();
 
     let candidates: Vec<PathBuf> = vec![
         context.join("PROJECT.md"),

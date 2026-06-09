@@ -124,10 +124,9 @@ where
         AgentKind::Auto => pick_auto(&report).ok_or_else(|| anyhow!("no agent CLI available"))?,
         explicit => explicit,
     };
-    let binary = match kind {
-        AgentKind::Codex => "codex",
-        AgentKind::Auto => unreachable!("Auto resolved above"),
-    };
+    let binary = kind
+        .binary()
+        .ok_or_else(|| anyhow!("no binary for harness {kind:?}"))?;
 
     // 2. Assemble the system prompt.
     let context = assemble_context(&opts.cwd, kind, &opts.tentacle_id);

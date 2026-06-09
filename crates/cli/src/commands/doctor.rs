@@ -33,14 +33,24 @@ fn print_human(r: &DoctorReport) {
     println!("monkey doctor");
     println!("  cwd: {}", r.cwd.display());
     println!();
-    println!("  CLIs");
+    println!("  Harnesses");
     println!(
-        "    {} codex    {}",
+        "    {} codex        {}",
         mark(r.codex_present()),
         version_or_dash(&r.codex_version)
     );
     println!(
-        "    {} git      {}",
+        "    {} claude-code  {}",
+        mark(r.claude_code_present()),
+        version_or_dash(&r.claude_code_version)
+    );
+    println!(
+        "    {} hermes       {}",
+        mark(r.hermes_present()),
+        version_or_dash(&r.hermes_version)
+    );
+    println!(
+        "    {} git          {}",
         mark(r.git_present()),
         version_or_dash(&r.git_version)
     );
@@ -60,14 +70,15 @@ fn print_human(r: &DoctorReport) {
     println!();
     println!("  Capacity");
     let cap = HostCapacity::detect();
-    let max_agents = max_concurrent_agents(&cap, &AgentBudget::default());
+    let max_pty = max_concurrent_agents(&cap, &AgentBudget::pty());
+    let max_native = max_concurrent_agents(&cap, &AgentBudget::native());
     println!(
         "    [info] RAM {avail} MiB free / {total} MiB total   CPUs {cpus}",
         avail = cap.available_mem_mb,
         total = cap.total_mem_mb,
         cpus = cap.logical_cpus,
     );
-    println!("    [info] max concurrent agents: {max_agents}");
+    println!("    [info] max native agents: {max_native}   max PTY agents: {max_pty}");
     if !r.notes.is_empty() {
         println!();
         println!("  Notes");
