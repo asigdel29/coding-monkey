@@ -103,6 +103,11 @@ impl ProviderLimiter {
         Self::new(LimiterConfig::default())
     }
 
+    /// Configured retry ceiling for a single call.
+    pub fn max_retries(&self) -> u32 {
+        self.cfg.max_retries
+    }
+
     fn gate(&self, provider: Provider) -> Arc<Gate> {
         let mut gates = self.gates.lock().expect("limiter lock");
         gates

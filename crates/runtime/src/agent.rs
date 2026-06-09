@@ -28,6 +28,7 @@ use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
 
 use crate::event::AgentEvent;
+use crate::limiter::ProviderLimiter;
 use crate::llm::{ChatResult, LlmError, NativeLlm};
 use crate::state::{AgentConfig, AgentOutcome, AgentState, Message};
 use crate::tool::{ToolCtx, ToolRegistry};
@@ -70,6 +71,59 @@ impl ChatBackend for NativeLlm {
     ) -> Result<ChatResult, LlmError> {
         self.chat_stream(model, messages, tools, max_tokens, cancel, on_delta)
             .await
+    }
+}
+
+/// A [`ChatBackend`] that runs the real `NativeLlm` through a
+/// [`ProviderLimiter`], so every agent's calls share the fleet's per-provider
+/// concurrency, pacing, and 429 backoff. Retries are handled here (rather
+/// than via `run_with_retry`) so the borrowed `on_delta` sink can be reused
+/// across attempts.
+#[derive(Debug, Clone)]
+pub struct LimitedBackend {
+    llm: Arc<NativeLlm>,
+    limiter: Arc<ProviderLimiter>,
+}
+
+impl LimitedBackend {
+    /// Wrap `llm` so its calls are gated by `limiter`.
+    pub fn new(llm: Arc<NativeLlm>, limiter: Arc<ProviderLimiter>) -> Self {
+        Self { llm, limiter }
+    }
+}
+
+#[async_trait]
+impl ChatBackend for LimitedBackend {
+    async fn chat(
+        &self,
+        model: &ModelSpec,
+        messages: &[Message],
+        tools: &[serde_json::Value],
+        max_tokens: u32,
+        cancel: &CancellationToken,
+        on_delta: &mut (dyn for<'a> FnMut(&'a str) + Send),
+    ) -> Result<ChatResult, LlmError> {
+        let provider = model.provider;
+        let mut attempt = 0;
+        loop {
+            let permit = self.limiter.acquire(provider).await;
+            match self
+                .llm
+                .chat_stream(model, messages, tools, max_tokens, cancel, on_delta)
+                .await
+            {
+                Ok(v) => {
+                    self.limiter.note_success(provider);
+                    return Ok(v);
+                }
+                Err(e) if e.is_retryable() && attempt < self.limiter.max_retries() => {
+                    drop(permit);
+                    self.limiter.note_failure(provider);
+                    attempt += 1;
+                }
+                Err(e) => return Err(e),
+            }
+        }
     }
 }
 
