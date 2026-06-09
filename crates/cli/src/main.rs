@@ -45,6 +45,8 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Cmd {
+    /// One-command onboarding: scaffold, import prompts, diagnose, next steps.
+    Setup(commands::setup::Args),
     /// Scaffold .monkey/ in the project.
     Init(commands::init::Args),
     /// Import existing agent prompts (CLAUDE.md, AGENTS.md, …) into .monkey/.
@@ -82,6 +84,7 @@ async fn main() -> anyhow::Result<()> {
     init_tracing();
     let cli = Cli::parse();
     match cli.command {
+        Some(Cmd::Setup(a)) => commands::setup::run(a).await,
         Some(Cmd::Init(a)) => commands::init::run(a).await,
         Some(Cmd::Import(a)) => commands::import::run(a).await,
         Some(Cmd::Engulf(a)) => commands::engulf::run(a).await,
