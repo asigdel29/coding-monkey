@@ -22,12 +22,17 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
+use crate::fs_guard::FsGuard;
+
 /// Per-agent execution sandbox handed to every [`Tool::call`].
 #[derive(Debug, Clone)]
 pub struct ToolCtx {
     /// Directory the agent is scoped to. Filesystem tools must reject paths
-    /// that escape this root (enforced by the fs guard added later).
+    /// that escape this root (enforced by [`ToolCtx::fs`]).
     pub cwd: PathBuf,
+    /// Path jail shared across this agent's tool calls — file tools resolve
+    /// every model-supplied path through it.
+    pub fs: Arc<FsGuard>,
     /// Cooperative cancellation: long-running tools should watch this and
     /// abort promptly when it fires.
     pub cancel: CancellationToken,
@@ -40,8 +45,10 @@ impl ToolCtx {
     /// Build a context jailed to `cwd` with a fresh cancellation token and
     /// the given output budget.
     pub fn new(cwd: PathBuf, output_budget: usize) -> Self {
+        let fs = Arc::new(FsGuard::rooted(&cwd));
         Self {
             cwd,
+            fs,
             cancel: CancellationToken::new(),
             output_budget,
         }
