@@ -2009,6 +2009,7 @@ dependencies = [
  "hmac",
  "monkey-agents",
  "monkey-core",
+ "monkey-runtime",
  "once_cell",
  "portable-pty",
  "pretty_assertions",
