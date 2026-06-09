@@ -44,7 +44,7 @@ pub mod ratelimit;
 /// Serde data models shared across the workspace (tasks, sessions, configs).
 pub mod types;
 
-pub use concurrency::{max_concurrent_agents, AgentBudget, HostCapacity};
+pub use concurrency::{max_concurrent_agents, AgentBudget, AgentClass, HostCapacity};
 pub use ratelimit::{RateLimit, TokenBucket};
 pub use errors::Error;
 pub use ids::generate_id;

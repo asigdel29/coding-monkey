@@ -16,20 +16,59 @@
    History
    Date         Author          Changes
    2026-06-03   Anubhav Sigdel  initial — RAM/CPU-aware agent concurrency cap
+   2026-06-09   Anubhav Sigdel  add AgentClass; native (in-process) budget
+                                 profile that drops the CPU guard so a Pi can
+                                 run 100+ lightweight network-bound agents
 */
 
 use serde::{Deserialize, Serialize};
 use sysinfo::System;
 
-/// Conservative per-agent working-set estimate, in MiB. An interactive
-/// agent CLI plus a loaded model context typically sits below this; the
-/// estimate is deliberately generous so the host stays responsive even
-/// when every scheduled agent is busy. Override via [`AgentBudget`].
+/// Conservative per-agent working-set estimate for a *PTY* agent, in MiB.
+/// An interactive agent CLI plus a loaded model context typically sits
+/// below this; the estimate is deliberately generous so the host stays
+/// responsive even when every scheduled agent is busy. Override via
+/// [`AgentBudget`].
 pub const DEFAULT_AGENT_MEM_MB: u64 = 512;
+
+/// Per-agent working-set estimate for a *native* (in-process) agent, in
+/// MiB. A native agent is a tokio task plus its transcript and one
+/// in-flight HTTP buffer — it is network-bound and mostly idle, so its
+/// footprint is roughly two orders of magnitude below a PTY agent's.
+pub const DEFAULT_NATIVE_AGENT_MEM_MB: u64 = 12;
 
 /// Fraction of *available* RAM that agents may collectively occupy. The
 /// remainder is left for the orchestrator, the UI, and the OS.
 pub const DEFAULT_MEM_HEADROOM: f64 = 0.75;
+
+/// Default RAM floor for native scheduling, in MiB. The memory watchdog
+/// stops admitting new native agents once available RAM drops below this,
+/// leaving room for the orchestrator and OS. (Consumed by the watchdog;
+/// carried on [`AgentBudget`] so policy lives in one place.)
+pub const DEFAULT_MEM_FLOOR_MB: u64 = 512;
+
+/// Default hard ceiling on concurrent *native* agents. RAM alone would
+/// permit far more on a big host, but holding that many live HTTP
+/// connections is pointless — the provider rate limiter is the real
+/// constraint past this point. Keeps a Pi 5 / 8 GB around 100–128.
+pub const DEFAULT_NATIVE_MAX_AGENTS: usize = 128;
+
+/// How an agent runs, which determines its resource profile.
+///
+/// - [`AgentClass::Pty`] — a heavyweight external CLI process spawned in a
+///   PTY (`codex`, Claude Code, Hermes). Hundreds of MiB each; CPU-bound
+///   while active, so the `cpus × 4` guard applies.
+/// - [`AgentClass::Native`] — a lightweight in-process tokio task driving
+///   the LLM client directly. ~12 MiB each; network-bound and mostly idle,
+///   so the CPU guard does *not* apply — the real ceilings are available
+///   RAM (via the watchdog) and the provider rate limiter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AgentClass {
+    /// Heavyweight external CLI agent in a PTY.
+    Pty,
+    /// Lightweight in-process native agent.
+    Native,
+}
 
 /// A snapshot of host capacity relevant to scheduling agents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,31 +108,70 @@ impl HostCapacity {
 /// Policy knobs for deriving the agent cap from a [`HostCapacity`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AgentBudget {
+    /// Which execution model this budget describes.
+    pub class: AgentClass,
     /// Per-agent RAM estimate, in MiB. Must be ≥ 1; values below 1 are
     /// treated as 1 to avoid division by zero.
     pub agent_mem_mb: u64,
     /// Fraction of available RAM agents may use, in `0.0..=1.0`.
     pub mem_headroom: f64,
+    /// Apply the `logical_cpus × 4` guard. True for CPU-bound PTY agents;
+    /// false for network-bound native agents (the guard would wrongly cap a
+    /// Pi at 16 when it can host 100+ idle-waiting tasks).
+    pub bind_to_cpu_guard: bool,
+    /// RAM floor for the watchdog, in MiB. New agents are not admitted once
+    /// available RAM drops below this.
+    pub mem_floor_mb: u64,
     /// Optional hard ceiling regardless of hardware. `None` = no extra cap.
     pub max_agents: Option<usize>,
 }
 
-impl Default for AgentBudget {
-    fn default() -> Self {
+impl AgentBudget {
+    /// Budget for heavyweight PTY agents — the original policy: 512 MiB
+    /// each, `cpus × 4` guard on, no extra ceiling.
+    pub fn pty() -> Self {
         Self {
+            class: AgentClass::Pty,
             agent_mem_mb: DEFAULT_AGENT_MEM_MB,
             mem_headroom: DEFAULT_MEM_HEADROOM,
+            bind_to_cpu_guard: true,
+            mem_floor_mb: DEFAULT_MEM_FLOOR_MB,
             max_agents: None,
         }
+    }
+
+    /// Budget for lightweight native agents — ~12 MiB each, CPU guard off,
+    /// clamped to [`DEFAULT_NATIVE_MAX_AGENTS`] so RAM-rich hosts don't try
+    /// to hold an absurd number of live HTTP connections.
+    pub fn native() -> Self {
+        Self {
+            class: AgentClass::Native,
+            agent_mem_mb: DEFAULT_NATIVE_AGENT_MEM_MB,
+            mem_headroom: DEFAULT_MEM_HEADROOM,
+            bind_to_cpu_guard: false,
+            mem_floor_mb: DEFAULT_MEM_FLOOR_MB,
+            max_agents: Some(DEFAULT_NATIVE_MAX_AGENTS),
+        }
+    }
+}
+
+impl Default for AgentBudget {
+    /// Defaults to the PTY profile, preserving the original behavior for
+    /// existing callers (the deck's legacy terminal cap).
+    fn default() -> Self {
+        Self::pty()
     }
 }
 
 /// Compute how many agents may run concurrently on `cap` under `budget`.
 ///
-/// RAM is the primary constraint: `available × headroom ÷ per-agent`. The
-/// result is then guarded by `logical_cpus × 4` so a huge-RAM / few-core
-/// box doesn't schedule an absurd number of CPU-bound processes, and
-/// finally clamped to `budget.max_agents` when set.
+/// RAM is the primary constraint: `available × headroom ÷ per-agent`. For
+/// CPU-bound PTY agents (`budget.bind_to_cpu_guard == true`) the result is
+/// then guarded by `logical_cpus × 4` so a huge-RAM / few-core box doesn't
+/// schedule an absurd number of processes. Native agents are network-bound
+/// and skip that guard — they are bounded instead by available RAM (and, at
+/// runtime, by the memory watchdog and provider rate limiter). The result
+/// is finally clamped to `budget.max_agents` when set.
 ///
 /// @return always ≥ 1 — a single agent can always run, even on a tiny host.
 pub fn max_concurrent_agents(cap: &HostCapacity, budget: &AgentBudget) -> usize {
@@ -102,10 +180,12 @@ pub fn max_concurrent_agents(cap: &HostCapacity, budget: &AgentBudget) -> usize 
     let usable_mb = (cap.available_mem_mb as f64 * headroom) as u64;
     let by_mem = (usable_mb / per_agent) as usize;
 
-    // Guard against runaway scheduling on RAM-rich, core-poor machines.
-    let cpu_guard = cap.logical_cpus.saturating_mul(4).max(1);
-
-    let mut n = by_mem.min(cpu_guard).max(1);
+    let mut n = by_mem.max(1);
+    if budget.bind_to_cpu_guard {
+        // Guard against runaway scheduling on RAM-rich, core-poor machines.
+        let cpu_guard = cap.logical_cpus.saturating_mul(4).max(1);
+        n = n.min(cpu_guard);
+    }
     if let Some(ceiling) = budget.max_agents {
         n = n.min(ceiling.max(1));
     }
@@ -144,8 +224,8 @@ mod tests {
 
     #[test]
     fn cpu_guards_ram_rich_hosts() {
-        // 256 GiB but only 2 cores → guarded to 2 × 4 = 8.
-        let n = max_concurrent_agents(&cap(256 * 1024, 2), &AgentBudget::default());
+        // 256 GiB but only 2 cores → guarded to 2 × 4 = 8 (PTY).
+        let n = max_concurrent_agents(&cap(256 * 1024, 2), &AgentBudget::pty());
         assert_eq!(n, 8);
     }
 
@@ -153,10 +233,37 @@ mod tests {
     fn respects_configured_ceiling() {
         let budget = AgentBudget {
             max_agents: Some(4),
-            ..AgentBudget::default()
+            ..AgentBudget::pty()
         };
         let n = max_concurrent_agents(&cap(32 * 1024, 64), &budget);
         assert_eq!(n, 4);
+    }
+
+    #[test]
+    fn native_skips_cpu_guard_and_scales_on_pi() {
+        // Pi 5 / 8 GiB / 4 cores: native = 8192 × 0.75 / 12 = 512 by RAM,
+        // CPU guard does NOT apply, clamped to the native ceiling (128).
+        let n = max_concurrent_agents(&cap(8 * 1024, 4), &AgentBudget::native());
+        assert_eq!(n, DEFAULT_NATIVE_MAX_AGENTS);
+        assert!(n >= 100, "native must reach 100+ on a Pi 5");
+    }
+
+    #[test]
+    fn pty_caps_low_on_same_pi() {
+        // Same Pi under the PTY profile: 8192 × 0.75 / 512 = 12 by RAM,
+        // cpu_guard = 16 → 12. Far below native, as expected.
+        let n = max_concurrent_agents(&cap(8 * 1024, 4), &AgentBudget::pty());
+        assert_eq!(n, 12);
+    }
+
+    #[test]
+    fn native_respects_explicit_lower_ceiling() {
+        let budget = AgentBudget {
+            max_agents: Some(50),
+            ..AgentBudget::native()
+        };
+        let n = max_concurrent_agents(&cap(8 * 1024, 4), &budget);
+        assert_eq!(n, 50);
     }
 
     #[test]
