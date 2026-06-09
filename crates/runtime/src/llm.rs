@@ -145,16 +145,20 @@ impl NativeLlm {
         tools: &[serde_json::Value],
         max_output_tokens: u32,
     ) -> Result<ChatResult, LlmError> {
-        let (endpoint, key_env) = endpoint_for(model.provider);
-        let key =
-            std::env::var(key_env).map_err(|_| LlmError::MissingKey(key_env.to_string()))?;
+        let wire = monkey_core::provider_wire(model.provider).map_err(LlmError::MissingKey)?;
+        if wire.key_required && wire.key.is_none() {
+            return Err(LlmError::MissingKey(format!(
+                "no API key for {:?}",
+                model.provider
+            )));
+        }
         let body = build_request_body(model, messages, tools, max_output_tokens, false);
 
-        let resp = self
-            .http
-            .post(endpoint)
-            .bearer_auth(key)
-            .json(&body)
+        let mut req = self.http.post(&wire.url).json(&body);
+        if let Some(key) = &wire.key {
+            req = req.bearer_auth(key);
+        }
+        let resp = req
             .send()
             .await
             .map_err(|e| LlmError::Transport(e.to_string()))?;
@@ -188,16 +192,20 @@ impl NativeLlm {
         cancel: &CancellationToken,
         on_delta: &mut (dyn FnMut(&str) + Send),
     ) -> Result<ChatResult, LlmError> {
-        let (endpoint, key_env) = endpoint_for(model.provider);
-        let key =
-            std::env::var(key_env).map_err(|_| LlmError::MissingKey(key_env.to_string()))?;
+        let wire = monkey_core::provider_wire(model.provider).map_err(LlmError::MissingKey)?;
+        if wire.key_required && wire.key.is_none() {
+            return Err(LlmError::MissingKey(format!(
+                "no API key for {:?}",
+                model.provider
+            )));
+        }
         let body = build_request_body(model, messages, tools, max_output_tokens, true);
 
-        let resp = self
-            .http
-            .post(endpoint)
-            .bearer_auth(key)
-            .json(&body)
+        let mut req = self.http.post(&wire.url).json(&body);
+        if let Some(key) = &wire.key {
+            req = req.bearer_auth(key);
+        }
+        let resp = req
             .send()
             .await
             .map_err(|e| LlmError::Transport(e.to_string()))?;
@@ -337,20 +345,6 @@ impl StreamAccumulator {
                 estimated_cost_usd: cost(model, inp, outp),
             },
         }
-    }
-}
-
-/// Endpoint URL and API-key env var for a provider.
-pub(crate) fn endpoint_for(provider: Provider) -> (&'static str, &'static str) {
-    match provider {
-        Provider::OpenRouter => (
-            "https://openrouter.ai/api/v1/chat/completions",
-            "OPENROUTER_API_KEY",
-        ),
-        Provider::Openai => (
-            "https://api.openai.com/v1/chat/completions",
-            "OPENAI_API_KEY",
-        ),
     }
 }
 

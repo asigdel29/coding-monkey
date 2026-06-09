@@ -14,6 +14,7 @@
    2026-06-03   Anubhav Sigdel  add concurrency module (RAM/CPU agent cap)
    2026-06-09   Anubhav Sigdel  add ratelimit module (shared token bucket)
    2026-06-09   Anubhav Sigdel  add watchdog module (RAM-floor admission)
+   2026-06-09   Anubhav Sigdel  add endpoints module (self-hosted provider)
 */
 
 #![deny(missing_debug_implementations)]
@@ -33,6 +34,8 @@
 
 /// RAM/CPU-aware policy for how many agents may run at once.
 pub mod concurrency;
+/// Provider endpoint + key resolution (incl. self-hosted endpoints).
+pub mod endpoints;
 /// Workspace-wide error enum bubbled up via `?` from every internal crate.
 pub mod errors;
 /// Short, prefixed, time-sortable IDs for tasks, workers, and sessions.
@@ -49,6 +52,7 @@ pub mod types;
 pub mod watchdog;
 
 pub use concurrency::{max_concurrent_agents, AgentBudget, AgentClass, HostCapacity};
+pub use endpoints::{provider_wire, ProviderWire};
 pub use ratelimit::{RateLimit, TokenBucket};
 pub use watchdog::{AdmissionDenied, MemoryWatchdog};
 pub use errors::Error;
