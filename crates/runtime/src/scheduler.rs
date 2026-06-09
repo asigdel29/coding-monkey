@@ -21,9 +21,12 @@
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+
+use futures::FutureExt;
 
 use monkey_core::{MemoryWatchdog, ModelSpec};
 use thiserror::Error;
@@ -185,7 +188,16 @@ impl Scheduler {
             // Queuing happens here: wait for a class slot.
             let _permit = sem.acquire_owned().await.expect("semaphore never closed");
             if !token.is_cancelled() {
-                run(token.clone()).await;
+                // Contain a panicking agent (release builds use panic=unwind)
+                // so it can't take down the runtime and so the cleanup below
+                // always runs. One bad agent must not kill the other 99.
+                if AssertUnwindSafe(run(token.clone()))
+                    .catch_unwind()
+                    .await
+                    .is_err()
+                {
+                    tracing::error!(agent_id = %task_id, "native agent task panicked");
+                }
             }
             jobs.lock().expect("jobs lock").remove(&task_id);
             completed.fetch_add(1, Ordering::SeqCst);
@@ -325,6 +337,29 @@ mod tests {
         }
         gate.store(1, Ordering::SeqCst);
         assert!(rejected, "expected a QueueFull rejection past the cap");
+    }
+
+    #[tokio::test]
+    async fn contains_panicking_job() {
+        let sched = Scheduler::new(SchedulerConfig::from_max_agents(4), watchdog());
+        let panic_job = AgentJob {
+            id: "boom".into(),
+            class: WorkClass::Shared,
+            run: Box::new(|_c| Box::pin(async { panic!("kaboom") })),
+        };
+        sched.submit(panic_job).unwrap();
+        // A normal job submitted afterwards still runs — the panic was contained.
+        let ran = Arc::new(AtomicU32::new(0));
+        sched.submit(trivial_job("ok", Arc::clone(&ran))).unwrap();
+        for _ in 0..100 {
+            if ran.load(Ordering::SeqCst) == 1 && sched.stats().completed == 2 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert_eq!(ran.load(Ordering::SeqCst), 1);
+        // Both jobs counted complete — the panicker's cleanup ran too.
+        assert_eq!(sched.stats().completed, 2);
     }
 
     #[tokio::test]

@@ -119,6 +119,14 @@ pub fn doctor_at(cwd: &Path) -> DoctorReport {
     if !monkey_initialized {
         notes.push(".monkey/ not found — run `monkey init` to scaffold context".into());
     }
+    if let Some(n) = soft_nofile_limit() {
+        if n < MIN_RECOMMENDED_NOFILE {
+            notes.push(format!(
+                "open-file limit is low ({n}); running many native agents may exhaust it \
+                 — raise with `ulimit -n {MIN_RECOMMENDED_NOFILE}`"
+            ));
+        }
+    }
 
     // The API path only needs a key + git; the codex CLI is optional and
     // only required for the interactive REPL hand-off.
@@ -170,6 +178,29 @@ fn bin_version(name: &str) -> Option<String> {
     } else {
         Some(s)
     }
+}
+
+/// Below this soft `RLIMIT_NOFILE`, many concurrent native agents (each
+/// holding HTTP sockets plus transient file handles) risk exhausting it.
+const MIN_RECOMMENDED_NOFILE: u64 = 4096;
+
+/// The process's soft open-file limit, on Linux. Read from
+/// `/proc/self/limits` to avoid a libc dependency; `None` elsewhere.
+#[cfg(target_os = "linux")]
+fn soft_nofile_limit() -> Option<u64> {
+    let text = std::fs::read_to_string("/proc/self/limits").ok()?;
+    for line in text.lines() {
+        if line.starts_with("Max open files") {
+            // "Max open files  <soft>  <hard>  files"
+            return line.split_whitespace().nth(3).and_then(|s| s.parse().ok());
+        }
+    }
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+fn soft_nofile_limit() -> Option<u64> {
+    None
 }
 
 fn find_git_root(start: &Path) -> Option<PathBuf> {

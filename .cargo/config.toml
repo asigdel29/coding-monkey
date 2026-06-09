@@ -1,0 +1,21 @@
+# File: .cargo/config.toml
+#
+# Purpose
+#   Build tuning for ARM64 / Raspberry Pi targets. The native agent engine
+#   is designed to run 100+ agents on a Pi 5, so we tune codegen for its
+#   CPU (Cortex-A76) when building for aarch64 Linux — this applies to both
+#   on-Pi native builds and cross-compiles.
+#
+#   Cross-compiling from an x86 host additionally needs an aarch64 linker;
+#   uncomment the `linker` line and install the toolchain
+#   (e.g. `apt install gcc-aarch64-linux-gnu`) or use `cross`:
+#       cargo install cross
+#       cross build --release --target aarch64-unknown-linux-gnu
+#
+# History
+# Date         Author          Changes
+# 2026-06-09   Anubhav Sigdel  initial — aarch64 Cortex-A76 tuning
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "target-cpu=cortex-a76"]
+# linker = "aarch64-linux-gnu-gcc"
