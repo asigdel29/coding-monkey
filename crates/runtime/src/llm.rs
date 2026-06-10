@@ -10,22 +10,29 @@
    would open a fresh connection pool for every request, which collapses
    under 100 concurrent agents.
 
-   This change is the non-streaming path. SSE streaming is layered on next.
+   The non-streaming `chat` and the SSE `chat_stream` share one request
+   builder and one tool-call/usage model; streaming additionally folds
+   incremental deltas (content fragments and per-index tool-call argument
+   fragments) into the same `ChatResult`.
 
    History
    Date         Author          Changes
    2026-06-09   Anubhav Sigdel  initial — tool-calling chat client, shared
                                  reqwest pool, pure body/response helpers
+   2026-06-09   Anubhav Sigdel  add SSE streaming (chat_stream) with
+                                 cancellation and delta accumulation
 */
 
 use std::time::Duration;
 
+use futures::StreamExt;
 use monkey_core::{
     tier_for_task, ModelRegistry, ModelSelector, ModelSpec, ModelTier, Provider, TaskType,
     TokenUsage,
 };
 use serde::Deserialize;
 use thiserror::Error;
+use tokio_util::sync::CancellationToken;
 
 use crate::state::{Message, Role, ToolCall};
 
@@ -164,6 +171,173 @@ impl NativeLlm {
         }
         parse_chat_response(&raw, model)
     }
+
+    /// Run one streaming chat turn. `on_delta` is invoked with each assistant
+    /// text fragment as it arrives; the fully-assembled [`ChatResult`]
+    /// (including tool calls and usage) is returned at the end.
+    ///
+    /// Honors `cancel`: when it fires, the HTTP stream is dropped and
+    /// whatever has accumulated so far is returned, so the caller can stop
+    /// promptly rather than waiting for the full generation.
+    pub async fn chat_stream<F: FnMut(&str)>(
+        &self,
+        model: &ModelSpec,
+        messages: &[Message],
+        tools: &[serde_json::Value],
+        max_output_tokens: u32,
+        cancel: &CancellationToken,
+        mut on_delta: F,
+    ) -> Result<ChatResult, LlmError> {
+        let (endpoint, key_env) = endpoint_for(model.provider);
+        let key =
+            std::env::var(key_env).map_err(|_| LlmError::MissingKey(key_env.to_string()))?;
+        let body = build_request_body(model, messages, tools, max_output_tokens, true);
+
+        let resp = self
+            .http
+            .post(endpoint)
+            .bearer_auth(key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| LlmError::Transport(e.to_string()))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let raw = resp.text().await.unwrap_or_default();
+            return Err(LlmError::Http {
+                status: status.as_u16(),
+                body: raw,
+            });
+        }
+
+        let mut stream = resp.bytes_stream();
+        let mut acc = StreamAccumulator::default();
+        let mut buf = String::new();
+        loop {
+            tokio::select! {
+                biased;
+                _ = cancel.cancelled() => break,
+                item = stream.next() => match item {
+                    Some(Ok(bytes)) => {
+                        buf.push_str(&String::from_utf8_lossy(&bytes));
+                        if drain_sse_lines(&mut buf, &mut acc, &mut on_delta)? {
+                            break; // saw [DONE]
+                        }
+                    }
+                    Some(Err(e)) => return Err(LlmError::Transport(e.to_string())),
+                    None => break,
+                },
+            }
+        }
+        Ok(acc.into_result(model))
+    }
+}
+
+/// Pull every complete `\n`-terminated SSE line out of `buf`, leaving any
+/// partial trailing line in place. Feeds each `data:` payload to `acc` and
+/// forwards content deltas to `on_delta`. @return `true` once `[DONE]` is
+/// seen.
+fn drain_sse_lines<F: FnMut(&str)>(
+    buf: &mut String,
+    acc: &mut StreamAccumulator,
+    on_delta: &mut F,
+) -> Result<bool, LlmError> {
+    while let Some(nl) = buf.find('\n') {
+        let line = buf[..nl].trim().to_string();
+        buf.drain(..=nl);
+        let Some(data) = line.strip_prefix("data:") else {
+            continue; // comments, event: lines, blank separators
+        };
+        let data = data.trim();
+        if data.is_empty() {
+            continue;
+        }
+        if data == "[DONE]" {
+            return Ok(true);
+        }
+        if let Some(delta) = acc.push(data)? {
+            on_delta(&delta);
+        }
+    }
+    Ok(false)
+}
+
+/// Folds streaming chunks into a final result. Content fragments append in
+/// order; tool-call fragments accumulate per `index` (id/name set once,
+/// arguments concatenated).
+#[derive(Default)]
+struct StreamAccumulator {
+    content: String,
+    tool_calls: Vec<ToolCall>,
+    finish_reason: String,
+    usage: Option<(u64, u64)>,
+}
+
+impl StreamAccumulator {
+    fn push(&mut self, json: &str) -> Result<Option<String>, LlmError> {
+        let chunk: StreamChunk =
+            serde_json::from_str(json).map_err(|e| LlmError::Decode(format!("{e}: {json}")))?;
+        if let Some(u) = chunk.usage {
+            self.usage = Some((u.prompt_tokens, u.completion_tokens));
+        }
+        let mut delta_text = None;
+        for choice in chunk.choices {
+            if let Some(fr) = choice.finish_reason {
+                self.finish_reason = fr;
+            }
+            if let Some(c) = choice.delta.content {
+                if !c.is_empty() {
+                    self.content.push_str(&c);
+                    delta_text = Some(c);
+                }
+            }
+            for tcd in choice.delta.tool_calls {
+                let slot = self.slot(tcd.index);
+                if let Some(id) = tcd.id {
+                    if !id.is_empty() {
+                        slot.id = id;
+                    }
+                }
+                if let Some(f) = tcd.function {
+                    if let Some(n) = f.name {
+                        if !n.is_empty() {
+                            slot.name = n;
+                        }
+                    }
+                    if let Some(a) = f.arguments {
+                        slot.arguments.push_str(&a);
+                    }
+                }
+            }
+        }
+        Ok(delta_text)
+    }
+
+    fn slot(&mut self, index: usize) -> &mut ToolCall {
+        while self.tool_calls.len() <= index {
+            self.tool_calls.push(ToolCall {
+                id: String::new(),
+                name: String::new(),
+                arguments: String::new(),
+            });
+        }
+        &mut self.tool_calls[index]
+    }
+
+    fn into_result(self, model: &ModelSpec) -> ChatResult {
+        let (inp, outp) = self.usage.unwrap_or((0, 0));
+        ChatResult {
+            assistant_text: self.content,
+            tool_calls: self.tool_calls,
+            finish_reason: self.finish_reason,
+            usage: TokenUsage {
+                input_tokens: inp,
+                output_tokens: outp,
+                total_tokens: inp + outp,
+                estimated_cost_usd: cost(model, inp, outp),
+            },
+        }
+    }
 }
 
 /// Endpoint URL and API-key env var for a provider.
@@ -199,6 +373,11 @@ pub(crate) fn build_request_body(
     if !tools.is_empty() {
         body["tools"] = serde_json::Value::Array(tools.to_vec());
         body["tool_choice"] = serde_json::json!("auto");
+    }
+    if stream {
+        // Ask the provider to emit a final usage chunk so streaming runs
+        // still get token/cost accounting.
+        body["stream_options"] = serde_json::json!({ "include_usage": true });
     }
     body
 }
@@ -331,6 +510,48 @@ struct WireUsage {
     completion_tokens: u64,
 }
 
+#[derive(Deserialize)]
+struct StreamChunk {
+    #[serde(default)]
+    choices: Vec<StreamChoice>,
+    #[serde(default)]
+    usage: Option<WireUsage>,
+}
+
+#[derive(Deserialize)]
+struct StreamChoice {
+    #[serde(default)]
+    delta: StreamDelta,
+    #[serde(default)]
+    finish_reason: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct StreamDelta {
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    tool_calls: Vec<StreamToolCallDelta>,
+}
+
+#[derive(Deserialize)]
+struct StreamToolCallDelta {
+    #[serde(default)]
+    index: usize,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    function: Option<StreamFnDelta>,
+}
+
+#[derive(Deserialize)]
+struct StreamFnDelta {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    arguments: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -410,5 +631,58 @@ mod tests {
         assert!(!LlmError::Http { status: 400, body: String::new() }.is_retryable());
         assert!(!LlmError::MissingKey("X".into()).is_retryable());
         assert!(LlmError::Transport("reset".into()).is_retryable());
+    }
+
+    #[test]
+    fn streaming_body_requests_usage() {
+        let body = build_request_body(&model(), &[Message::user("hi")], &[], 64, true);
+        assert_eq!(body["stream"], true);
+        assert_eq!(body["stream_options"]["include_usage"], true);
+    }
+
+    #[test]
+    fn accumulator_folds_text_and_split_tool_args() {
+        // Tool-call arguments arrive split across two chunks; content too.
+        let chunks = [
+            r#"{"choices":[{"delta":{"content":"Hel"}}]}"#,
+            r#"{"choices":[{"delta":{"content":"lo"}}]}"#,
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"read_file","arguments":"{\"pa"}}]}}]}"#,
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"th\":\"a\"}"}}]},"finish_reason":"tool_calls"}]}"#,
+            r#"{"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":3}}"#,
+        ];
+        let mut acc = StreamAccumulator::default();
+        let mut seen = String::new();
+        for c in chunks {
+            if let Some(d) = acc.push(c).unwrap() {
+                seen.push_str(&d);
+            }
+        }
+        let r = acc.into_result(&model());
+        assert_eq!(seen, "Hello");
+        assert_eq!(r.assistant_text, "Hello");
+        assert_eq!(r.tool_calls.len(), 1);
+        assert_eq!(r.tool_calls[0].name, "read_file");
+        assert_eq!(r.tool_calls[0].arguments, "{\"path\":\"a\"}");
+        assert_eq!(r.finish_reason, "tool_calls");
+        assert_eq!(r.usage.total_tokens, 10);
+    }
+
+    #[test]
+    fn drain_handles_partial_lines_and_done() {
+        let mut acc = StreamAccumulator::default();
+        let mut got = String::new();
+        // First buffer ends mid-line; the remainder completes it next call.
+        let mut buf = String::from("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\ndata: {\"choi");
+        {
+            let mut cb = |s: &str| got.push_str(s);
+            assert!(!drain_sse_lines(&mut buf, &mut acc, &mut cb).unwrap());
+        }
+        assert_eq!(got, "hi");
+        buf.push_str("ces\":[{\"delta\":{\"content\":\"!\"}}]}\ndata: [DONE]\n");
+        {
+            let mut cb = |s: &str| got.push_str(s);
+            assert!(drain_sse_lines(&mut buf, &mut acc, &mut cb).unwrap());
+        }
+        assert_eq!(got, "hi!");
     }
 }
