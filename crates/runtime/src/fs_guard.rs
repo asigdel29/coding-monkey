@@ -12,9 +12,12 @@
    History
    Date         Author          Changes
    2026-06-09   Anubhav Sigdel  initial — lexical path jail
+   2026-06-09   Anubhav Sigdel  add per-path write locks (RAII guard)
 */
 
+use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use thiserror::Error;
 
@@ -27,9 +30,29 @@ pub enum FsError {
 }
 
 /// A working-directory jail for an agent's file tools.
+///
+/// `Clone` shares the same lock set (the locks live behind an `Arc`), so a
+/// cloned guard still serializes writes against its original.
 #[derive(Debug, Clone)]
 pub struct FsGuard {
     root: PathBuf,
+    write_locks: Arc<Mutex<HashSet<PathBuf>>>,
+}
+
+/// RAII handle for an in-flight write to a path. Dropping it releases the
+/// lock, including on panic, so a crashed write never wedges the path.
+#[derive(Debug)]
+pub struct WriteLock {
+    path: PathBuf,
+    locks: Arc<Mutex<HashSet<PathBuf>>>,
+}
+
+impl Drop for WriteLock {
+    fn drop(&mut self) {
+        if let Ok(mut set) = self.locks.lock() {
+            set.remove(&self.path);
+        }
+    }
 }
 
 impl FsGuard {
@@ -39,12 +62,30 @@ impl FsGuard {
     pub fn rooted(root: impl AsRef<Path>) -> Self {
         let root = root.as_ref();
         let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
-        Self { root }
+        Self {
+            root,
+            write_locks: Arc::new(Mutex::new(HashSet::new())),
+        }
     }
 
     /// The jail root.
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// Try to take the write lock for `path`. Returns `None` if a write to
+    /// the same path is already in flight, so the caller can report a
+    /// conflict instead of racing.
+    pub fn try_lock_write(&self, path: &Path) -> Option<WriteLock> {
+        let mut set = self.write_locks.lock().ok()?;
+        if set.insert(path.to_path_buf()) {
+            Some(WriteLock {
+                path: path.to_path_buf(),
+                locks: Arc::clone(&self.write_locks),
+            })
+        } else {
+            None
+        }
     }
 
     /// Resolve a model-supplied path to an absolute path inside the jail.
@@ -120,5 +161,15 @@ mod tests {
             g.resolve("/etc/passwd"),
             Err(FsError::Escape(_))
         ));
+    }
+
+    #[test]
+    fn write_lock_is_exclusive_then_released() {
+        let g = FsGuard::rooted("/srv/repo");
+        let p = PathBuf::from("/srv/repo/a.txt");
+        let lock = g.try_lock_write(&p).expect("first lock");
+        assert!(g.try_lock_write(&p).is_none(), "second lock must fail");
+        drop(lock);
+        assert!(g.try_lock_write(&p).is_some(), "lock frees on drop");
     }
 }
