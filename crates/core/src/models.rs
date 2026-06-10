@@ -40,6 +40,11 @@ pub enum Provider {
     OpenRouter,
     /// OpenAI (GPT family).
     Openai,
+    /// A self-hosted, OpenAI-compatible endpoint (Ollama, llama.cpp server,
+    /// vLLM, LM Studio, …). Base URL comes from the environment; see
+    /// [`crate::endpoints`].
+    #[serde(rename = "self-hosted")]
+    SelfHosted,
 }
 
 /// Single registered model with cost + tier metadata.
