@@ -43,6 +43,22 @@ README — a `/* File: … Purpose … History … */` block before the first
 `use`. Update the History row when you make a non-trivial change to a
 file you're already touching.
 
+## Pull requests
+
+- **Small, stacked PRs.** One cohesive change per PR — aim for **~20 files /
+  ~200 LOC** of meaningful diff (excluding lockfiles and generated artifacts).
+  If a change is bigger, split it into several PRs.
+- **Dependency order.** When a PR builds on another, base its branch on the
+  parent branch and merge parents first (`gh pr create --base <parent-branch>`).
+- **Vertical slices.** Land plumbing first (types + wiring), then one UI surface
+  per PR.
+- **Branch from `main`** (`git checkout main && git pull origin main`), one
+  feature branch per slice, open the PR against `origin/main`.
+- **Clean up after merge** — delete the branch on the remote
+  (`git push origin --delete <branch>`) and locally (`git branch -d <branch>`).
+- **No AI authorship attribution** anywhere in commits, PR titles/bodies, or
+  docs (drop any `Co-Authored-By` / "Generated with" footers).
+
 ## Commit style
 
 Conventional Commits. The first line is `<type>(<scope>): <subject>`.
