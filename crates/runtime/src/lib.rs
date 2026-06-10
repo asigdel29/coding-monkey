@@ -15,6 +15,7 @@
    History
    Date         Author          Changes
    2026-06-09   Anubhav Sigdel  initial skeleton — tool/state/event types
+   2026-06-09   Anubhav Sigdel  add llm module (tool-calling chat client)
 */
 
 #![deny(unsafe_code)]
@@ -26,14 +27,18 @@
 //! - [`tool`] — the `Tool` trait, execution context, result, and registry
 //! - [`state`] — transcript messages, run config, and outcome
 //! - [`event`] — the progress event stream an agent emits
+//! - [`llm`] — tool-calling chat client over a shared HTTP pool
 
 /// Agent progress event stream.
 pub mod event;
+/// Tool-calling LLM chat client.
+pub mod llm;
 /// Conversation state: transcript, config, outcome.
 pub mod state;
 /// Tool interface, execution context, and registry.
 pub mod tool;
 
 pub use event::AgentEvent;
+pub use llm::{ChatResult, LlmError, NativeLlm};
 pub use state::{AgentConfig, AgentOutcome, AgentState, Message, Role, ToolCall};
 pub use tool::{Tool, ToolCtx, ToolRef, ToolRegistry, ToolResult};
