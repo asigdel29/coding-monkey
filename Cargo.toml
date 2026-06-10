@@ -91,7 +91,7 @@ regex = "1.12"
 once_cell = "1.20"
 
 # System capacity probing (RAM/CPU) for the agent concurrency cap
-sysinfo = "0.33"
+sysinfo = "0.39"
 
 # Testing
 pretty_assertions = "1.4"
