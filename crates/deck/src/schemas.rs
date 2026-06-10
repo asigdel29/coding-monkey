@@ -14,6 +14,7 @@
    History
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  full Rust port from packages/deck/src/schemas.ts
+   2026-06-09   Anubhav Sigdel  add agent.spawn/cancel/list (native agents)
 */
 
 use once_cell::sync::Lazy;
@@ -86,11 +87,36 @@ pub enum WsMsg {
     /// Kill a terminal.
     #[serde(rename = "term.kill")]
     TermKill { id: String },
+    /// Spawn a native in-process agent for a task.
+    #[serde(rename = "agent.spawn")]
+    AgentSpawn {
+        task: String,
+        #[serde(
+            default,
+            rename = "tentacleId",
+            skip_serializing_if = "Option::is_none"
+        )]
+        tentacle_id: Option<String>,
+        #[serde(default, rename = "taskType", skip_serializing_if = "Option::is_none")]
+        task_type: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tier: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        harness: Option<String>,
+    },
+    /// Cancel a running native agent by id.
+    #[serde(rename = "agent.cancel")]
+    AgentCancel { id: String },
+    /// List running native agents.
+    #[serde(rename = "agent.list")]
+    AgentList,
 }
 
 const MAX_STR: usize = 64 * 1024;
 const MAX_ID: usize = 256;
 const MAX_TITLE: usize = 512;
+/// Max length of a native agent's task prompt.
+const MAX_TASK: usize = 16 * 1024;
 
 static ID_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^[A-Za-z0-9._\-]+$").expect("valid id regex"));
@@ -249,6 +275,17 @@ pub fn parse_ws_msg(raw: &Value) -> Result<WsMsg, String> {
         "term.kill" => WsMsg::TermKill {
             id: id_field("id")?,
         },
+        "agent.spawn" => WsMsg::AgentSpawn {
+            task: str_field("task", 1, MAX_TASK)?,
+            tentacle_id: opt_id("tentacleId")?,
+            task_type: opt_str("taskType", 1, 64)?,
+            tier: opt_str("tier", 1, 32)?,
+            harness: opt_str("harness", 1, 64)?,
+        },
+        "agent.cancel" => WsMsg::AgentCancel {
+            id: id_field("id")?,
+        },
+        "agent.list" => WsMsg::AgentList,
         _ => return Err("unknown-type".into()),
     };
     Ok(msg)
@@ -320,5 +357,52 @@ mod tests {
         let big_args: Vec<String> = (0..200).map(|i| format!("a{i}")).collect();
         let v = json!({ "type": "term.spawn", "args": big_args });
         assert!(parse_ws_msg(&v).is_err());
+    }
+
+    #[test]
+    fn parses_agent_spawn_minimal() {
+        let v = json!({ "type": "agent.spawn", "task": "fix the bug" });
+        match parse_ws_msg(&v).unwrap() {
+            WsMsg::AgentSpawn { task, tentacle_id, harness, .. } => {
+                assert_eq!(task, "fix the bug");
+                assert!(tentacle_id.is_none() && harness.is_none());
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn parses_agent_spawn_with_options() {
+        let v = json!({
+            "type": "agent.spawn", "task": "t", "tentacleId": "main",
+            "taskType": "review", "tier": "powerful", "harness": "native"
+        });
+        match parse_ws_msg(&v).unwrap() {
+            WsMsg::AgentSpawn { tentacle_id, task_type, tier, harness, .. } => {
+                assert_eq!(tentacle_id.as_deref(), Some("main"));
+                assert_eq!(task_type.as_deref(), Some("review"));
+                assert_eq!(tier.as_deref(), Some("powerful"));
+                assert_eq!(harness.as_deref(), Some("native"));
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn rejects_agent_spawn_without_task() {
+        let v = json!({ "type": "agent.spawn" });
+        assert!(parse_ws_msg(&v).is_err());
+    }
+
+    #[test]
+    fn parses_agent_cancel_and_list() {
+        assert!(matches!(
+            parse_ws_msg(&json!({ "type": "agent.cancel", "id": "agent_abc" })).unwrap(),
+            WsMsg::AgentCancel { .. }
+        ));
+        assert!(matches!(
+            parse_ws_msg(&json!({ "type": "agent.list" })).unwrap(),
+            WsMsg::AgentList
+        ));
     }
 }
