@@ -101,7 +101,10 @@ opt-level = 3
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
-panic = "abort"
+# Unwind (not abort) so a panicking native agent is contained by the
+# scheduler instead of taking down the whole process — essential when 100+
+# agents share one runtime. Costs a little binary size for landing pads.
+panic = "unwind"
 
 [profile.dev]
 opt-level = 0
