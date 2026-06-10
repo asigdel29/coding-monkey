@@ -18,6 +18,7 @@
    2026-06-09   Anubhav Sigdel  add llm module (tool-calling chat client)
    2026-06-09   Anubhav Sigdel  add fs_guard + read_file/list_dir tools
    2026-06-09   Anubhav Sigdel  add write_file/search tools + fs write locks
+   2026-06-09   Anubhav Sigdel  add run_command tool (allowlisted, no shell)
 */
 
 #![deny(unsafe_code)]
