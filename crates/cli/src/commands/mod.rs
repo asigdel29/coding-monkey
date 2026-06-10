@@ -24,5 +24,6 @@ pub mod models;
 pub mod orchestrate;
 pub mod pentest;
 pub mod review;
+pub mod setup;
 pub mod ship;
 pub mod skill;
