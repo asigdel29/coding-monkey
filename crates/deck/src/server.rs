@@ -440,11 +440,30 @@ fn origin_is_allowed(headers: &HeaderMap, state: &AppState) -> bool {
     allowed.iter().any(|a| a == origin)
 }
 
+/// Outbound side of a WebSocket connection. All writes go through this
+/// channel to a single writer task that owns the sink, so the dispatch path
+/// and every background agent-event forwarder can send frames without
+/// contending for `&mut SplitSink`.
+type OutboundTx = tokio::sync::mpsc::Sender<Message>;
+
 async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
     let (mut sender, mut receiver) = socket.split();
     let mut authed = false;
     let mut owned: Vec<String> = Vec::new();
     let mut bucket = monkey_core::TokenBucket::new(state.rate);
+
+    // Single-writer bridge: one task owns the sink and drains an outbound
+    // channel. A bounded buffer applies backpressure so a slow client can't
+    // make the server buffer without limit.
+    let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<Message>(256);
+    let writer = tokio::spawn(async move {
+        while let Some(msg) = out_rx.recv().await {
+            let is_close = matches!(msg, Message::Close(_));
+            if sender.send(msg).await.is_err() || is_close {
+                break;
+            }
+        }
+    });
 
     audit(&state, "ws.connect", serde_json::json!({})).await;
 
@@ -458,7 +477,7 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
                 serde_json::json!({ "reason": "timeout" }),
             )
             .await;
-            let _ = sender.send(Message::Close(None)).await;
+            let _ = out_tx.send(Message::Close(None)).await;
             break;
         }
         if expired(&state) {
@@ -468,7 +487,7 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
                 serde_json::json!({ "reason": "session-expired" }),
             )
             .await;
-            let _ = sender.send(Message::Close(None)).await;
+            let _ = out_tx.send(Message::Close(None)).await;
             break;
         }
         let frame = match frame {
@@ -479,7 +498,7 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
             Message::Text(t) => t,
             Message::Binary(_) => continue,
             Message::Ping(p) => {
-                let _ = sender.send(Message::Pong(p)).await;
+                let _ = out_tx.send(Message::Pong(p)).await;
                 continue;
             }
             Message::Pong(_) => continue,
@@ -488,7 +507,7 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
 
         if !bucket.consume() {
             audit(&state, "ws.rate-limit", serde_json::json!({})).await;
-            let _ = sender.send(Message::Close(None)).await;
+            let _ = out_tx.send(Message::Close(None)).await;
             break;
         }
 
@@ -534,7 +553,7 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
                     serde_json::json!({ "reason": "bad-token" }),
                 )
                 .await;
-                let _ = sender.send(Message::Close(None)).await;
+                let _ = out_tx.send(Message::Close(None)).await;
                 break;
             }
             authed = true;
@@ -544,12 +563,12 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
                 "max_agents": state.max_agents,
                 "tentacles": state.tentacles.list(),
             });
-            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+            let _ = out_tx.send(Message::Text(payload.to_string().into())).await;
             continue;
         }
 
         // From here on, we have a fully authed WS — dispatch.
-        if let Err(err) = dispatch(&state, &msg, &mut owned, &mut sender).await {
+        if let Err(err) = dispatch(&state, &msg, &mut owned, &out_tx).await {
             tracing::warn!("deck dispatch error: {err}");
         }
     }
@@ -571,13 +590,18 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
         serde_json::json!({ "owned_terminals": owned.len() }),
     )
     .await;
+
+    // Close the outbound channel so the writer task drains any buffered
+    // frames (incl. a Close) and exits, then join it.
+    drop(out_tx);
+    let _ = writer.await;
 }
 
 async fn dispatch(
     state: &AppState,
     msg: &WsMsg,
     owned: &mut Vec<String>,
-    sender: &mut futures::stream::SplitSink<WebSocket, Message>,
+    sender: &OutboundTx,
 ) -> anyhow::Result<()> {
     match msg {
         WsMsg::Auth { .. } | WsMsg::TentacleList => {
@@ -759,11 +783,11 @@ async fn dispatch(
     Ok(())
 }
 
-async fn send_json(
-    sender: &mut futures::stream::SplitSink<WebSocket, Message>,
-    payload: serde_json::Value,
-) -> Result<(), axum::Error> {
-    sender.send(Message::Text(payload.to_string().into())).await
+async fn send_json(sender: &OutboundTx, payload: serde_json::Value) -> anyhow::Result<()> {
+    sender
+        .send(Message::Text(payload.to_string().into()))
+        .await
+        .context("outbound channel closed")
 }
 
 fn kind_label(msg: &WsMsg) -> &'static str {
