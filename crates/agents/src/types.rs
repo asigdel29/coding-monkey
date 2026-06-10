@@ -9,19 +9,49 @@
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  initial port from packages/agents/src/types.ts
    2026-06-03   Anubhav Sigdel  drop legacy agent kind; codex-only roster
+   2026-06-09   Anubhav Sigdel  harness roster: codex, claude-code, hermes
 */
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-/// Which agent CLI to spawn.
+/// Which agent harness (external CLI) to spawn. Lets users bring the agent
+/// they already use; `Auto` resolves to whichever is installed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum AgentKind {
-    /// Pick whichever supported CLI is installed (currently `codex`).
+    /// Pick whichever supported harness is installed.
     Auto,
-    /// Force the codex CLI.
+    /// The `codex` CLI.
     Codex,
+    /// The Claude Code CLI (`claude`).
+    ClaudeCode,
+    /// The Hermes CLI (`hermes`).
+    Hermes,
+}
+
+impl AgentKind {
+    /// The CLI binary this harness launches. `Auto` has no fixed binary —
+    /// it is resolved to a concrete harness by the doctor first.
+    pub fn binary(self) -> Option<&'static str> {
+        match self {
+            AgentKind::Codex => Some("codex"),
+            AgentKind::ClaudeCode => Some("claude"),
+            AgentKind::Hermes => Some("hermes"),
+            AgentKind::Auto => None,
+        }
+    }
+
+    /// The per-harness context file name under `.monkey/context/`. Lets a
+    /// user keep harness-specific guidance (e.g. an existing `CLAUDE.md`).
+    pub fn context_file(self) -> &'static str {
+        match self {
+            AgentKind::Codex => "CODEX.md",
+            AgentKind::ClaudeCode => "CLAUDE.md",
+            AgentKind::Hermes => "HERMES.md",
+            AgentKind::Auto => "AGENT.md",
+        }
+    }
 }
 
 /// Options for [`crate::spawn::spawn_agent`].

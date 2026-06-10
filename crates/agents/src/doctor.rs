@@ -12,6 +12,7 @@
    2026-05-05   Anubhav Sigdel  initial Rust port from packages/agents/src/doctor.ts
    2026-05-06   Anubhav Sigdel  capture CLI versions, repo state, monkey scaffold
    2026-06-03   Anubhav Sigdel  report OpenRouter key; codex-only pick_auto
+   2026-06-09   Anubhav Sigdel  detect codex/claude-code/hermes harnesses
 */
 
 use serde::{Deserialize, Serialize};
@@ -29,6 +30,10 @@ pub struct DoctorReport {
     pub ok: bool,
     /// `codex --version` stdout, trimmed. `None` if not on PATH.
     pub codex_version: Option<String>,
+    /// Claude Code (`claude --version`) stdout, trimmed. `None` if absent.
+    pub claude_code_version: Option<String>,
+    /// Hermes (`hermes --version`) stdout, trimmed. `None` if absent.
+    pub hermes_version: Option<String>,
     /// `git --version` stdout, trimmed. `None` if not on PATH.
     pub git_version: Option<String>,
     /// Whether `OPENROUTER_API_KEY` is set.
@@ -54,6 +59,18 @@ impl DoctorReport {
     pub fn codex_present(&self) -> bool {
         self.codex_version.is_some()
     }
+    /// Whether the Claude Code CLI is on PATH.
+    pub fn claude_code_present(&self) -> bool {
+        self.claude_code_version.is_some()
+    }
+    /// Whether the Hermes CLI is on PATH.
+    pub fn hermes_present(&self) -> bool {
+        self.hermes_version.is_some()
+    }
+    /// Whether any external harness CLI is installed.
+    pub fn any_harness_present(&self) -> bool {
+        self.codex_present() || self.claude_code_present() || self.hermes_present()
+    }
     /// Whether `git` is on PATH.
     pub fn git_present(&self) -> bool {
         self.git_version.is_some()
@@ -70,6 +87,8 @@ pub fn doctor() -> DoctorReport {
 /// Same as [`doctor`] but rooted at an explicit path. Exposed for tests.
 pub fn doctor_at(cwd: &Path) -> DoctorReport {
     let codex_version = bin_version("codex");
+    let claude_code_version = bin_version("claude");
+    let hermes_version = bin_version("hermes");
     let git_version = bin_version("git");
     let openrouter_key = std::env::var("OPENROUTER_API_KEY").is_ok();
     let openai_key = std::env::var("OPENAI_API_KEY").is_ok();
@@ -81,8 +100,12 @@ pub fn doctor_at(cwd: &Path) -> DoctorReport {
     let repo_complexity = detected.as_ref().map(|r| r.complexity);
 
     let mut notes = Vec::new();
-    if codex_version.is_none() {
-        notes.push("no agent CLI on PATH (install `codex` for the REPL path)".into());
+    if codex_version.is_none() && claude_code_version.is_none() && hermes_version.is_none() {
+        notes.push(
+            "no external agent harness on PATH (install `codex`, `claude`, or `hermes` for the \
+             PTY path — the native engine needs only an API key)"
+                .into(),
+        );
     }
     if git_version.is_none() {
         notes.push("git not found — repo detection and skills will degrade".into());
@@ -104,6 +127,8 @@ pub fn doctor_at(cwd: &Path) -> DoctorReport {
     DoctorReport {
         ok,
         codex_version,
+        claude_code_version,
+        hermes_version,
         git_version,
         openrouter_key,
         openai_key,
@@ -116,11 +141,15 @@ pub fn doctor_at(cwd: &Path) -> DoctorReport {
     }
 }
 
-/// Resolve `AgentKind::Auto` into a concrete kind. Returns the `codex`
-/// CLI if it is installed, otherwise `None`.
+/// Resolve `AgentKind::Auto` into a concrete harness, preferring `codex`,
+/// then Claude Code, then Hermes. Returns `None` if none are installed.
 pub fn pick_auto(report: &DoctorReport) -> Option<AgentKind> {
     if report.codex_present() {
         Some(AgentKind::Codex)
+    } else if report.claude_code_present() {
+        Some(AgentKind::ClaudeCode)
+    } else if report.hermes_present() {
+        Some(AgentKind::Hermes)
     } else {
         None
     }
@@ -162,6 +191,8 @@ mod tests {
         DoctorReport {
             ok: false,
             codex_version: None,
+            claude_code_version: None,
+            hermes_version: None,
             git_version: None,
             openrouter_key: false,
             openai_key: false,
@@ -221,5 +252,36 @@ mod tests {
     fn pick_auto_returns_none_when_neither_installed() {
         let r = empty_report();
         assert_eq!(pick_auto(&r), None);
+    }
+
+    #[test]
+    fn pick_auto_prefers_codex_then_claude_then_hermes() {
+        let claude_only = DoctorReport {
+            claude_code_version: Some("claude 1.0".into()),
+            ..empty_report()
+        };
+        assert_eq!(pick_auto(&claude_only), Some(AgentKind::ClaudeCode));
+
+        let hermes_only = DoctorReport {
+            hermes_version: Some("hermes 1.0".into()),
+            ..empty_report()
+        };
+        assert_eq!(pick_auto(&hermes_only), Some(AgentKind::Hermes));
+
+        let both = DoctorReport {
+            codex_version: Some("codex".into()),
+            claude_code_version: Some("claude".into()),
+            ..empty_report()
+        };
+        assert_eq!(pick_auto(&both), Some(AgentKind::Codex));
+    }
+
+    #[test]
+    fn harness_binary_and_context_file_mapping() {
+        assert_eq!(AgentKind::Codex.binary(), Some("codex"));
+        assert_eq!(AgentKind::ClaudeCode.binary(), Some("claude"));
+        assert_eq!(AgentKind::Hermes.binary(), Some("hermes"));
+        assert_eq!(AgentKind::Auto.binary(), None);
+        assert_eq!(AgentKind::ClaudeCode.context_file(), "CLAUDE.md");
     }
 }
