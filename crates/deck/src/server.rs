@@ -246,7 +246,7 @@ pub async fn start_deck(opts: DeckOpts) -> anyhow::Result<DeckHandle> {
         SchedulerConfig::from_max_agents(native_max_agents),
         watchdog,
     ));
-    let llm = Arc::new(NativeLlm::new(monkey_core::Provider::OpenRouter));
+    let llm = Arc::new(NativeLlm::new(default_provider_from_config(&opts.cwd)));
     let limiter = Arc::new(ProviderLimiter::with_defaults());
     let tools = Arc::new(monkey_runtime::default_tools());
 
@@ -939,6 +939,28 @@ async fn dispatch(
     Ok(())
 }
 
+/// Read `.monkey/config.json`'s `default_provider` and map it to a
+/// [`monkey_core::Provider`]. Defaults to OpenRouter when the file or field
+/// is absent or unrecognized, so existing setups are unaffected. Selecting
+/// `self-hosted` here points native agents at a local OpenAI-compatible
+/// server (see `MONKEY_SELF_HOSTED_URL`).
+fn default_provider_from_config(cwd: &std::path::Path) -> monkey_core::Provider {
+    use monkey_core::Provider;
+    let raw = match std::fs::read_to_string(cwd.join(".monkey").join("config.json")) {
+        Ok(s) => s,
+        Err(_) => return Provider::OpenRouter,
+    };
+    let val: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(_) => return Provider::OpenRouter,
+    };
+    match val.get("default_provider").and_then(|v| v.as_str()) {
+        Some("openai") => Provider::Openai,
+        Some("self-hosted") | Some("selfhosted") => Provider::SelfHosted,
+        _ => Provider::OpenRouter,
+    }
+}
+
 /// Map a wire task-type string to a [`monkey_core::TaskType`], defaulting to
 /// `Edit` for unrecognized values.
 fn map_task_type(s: &str) -> monkey_core::TaskType {
@@ -1107,6 +1129,29 @@ mod tests {
         assert!(!constant_time_eq(b"abc", b"abcd"));
         assert!(constant_time_eq(b"abc", b"abc"));
         assert!(!constant_time_eq(b"abc", b"xyz"));
+    }
+
+    #[test]
+    fn default_provider_reads_config() {
+        use monkey_core::Provider;
+        let dir = tempfile::tempdir().unwrap();
+        // Missing config → OpenRouter.
+        assert_eq!(default_provider_from_config(dir.path()), Provider::OpenRouter);
+
+        std::fs::create_dir_all(dir.path().join(".monkey")).unwrap();
+        std::fs::write(
+            dir.path().join(".monkey/config.json"),
+            r#"{ "default_provider": "self-hosted" }"#,
+        )
+        .unwrap();
+        assert_eq!(default_provider_from_config(dir.path()), Provider::SelfHosted);
+
+        std::fs::write(
+            dir.path().join(".monkey/config.json"),
+            r#"{ "default_provider": "openai" }"#,
+        )
+        .unwrap();
+        assert_eq!(default_provider_from_config(dir.path()), Provider::Openai);
     }
 
     #[tokio::test]
