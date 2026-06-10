@@ -136,7 +136,8 @@ impl ProviderLimiter {
             // Observe the shared backoff window.
             let wait = {
                 let st = gate.state.lock().expect("gate state");
-                st.pause_until.and_then(|t| t.checked_duration_since(Instant::now()))
+                st.pause_until
+                    .and_then(|t| t.checked_duration_since(Instant::now()))
             };
             if let Some(w) = wait {
                 tokio::time::sleep(w).await;
@@ -255,7 +256,10 @@ mod tests {
                 let n = calls.fetch_add(1, Ordering::SeqCst);
                 async move {
                     if n < 2 {
-                        Err(LlmError::Http { status: 429, body: String::new() })
+                        Err(LlmError::Http {
+                            status: 429,
+                            body: String::new(),
+                        })
                     } else {
                         Ok(n)
                     }
@@ -273,7 +277,12 @@ mod tests {
         let out: Result<u32, LlmError> = lim
             .run_with_retry(Provider::OpenRouter, || {
                 calls.fetch_add(1, Ordering::SeqCst);
-                async { Err(LlmError::Http { status: 503, body: String::new() }) }
+                async {
+                    Err(LlmError::Http {
+                        status: 503,
+                        body: String::new(),
+                    })
+                }
             })
             .await;
         assert!(out.is_err());
@@ -288,7 +297,12 @@ mod tests {
         let out: Result<u32, LlmError> = lim
             .run_with_retry(Provider::OpenRouter, || {
                 calls.fetch_add(1, Ordering::SeqCst);
-                async { Err(LlmError::Http { status: 401, body: "bad key".into() }) }
+                async {
+                    Err(LlmError::Http {
+                        status: 401,
+                        body: "bad key".into(),
+                    })
+                }
             })
             .await;
         assert!(out.is_err());
@@ -332,6 +346,9 @@ mod tests {
         for h in handles {
             h.await.unwrap();
         }
-        assert!(peak.load(Ordering::SeqCst) <= 4, "in-flight exceeded the cap");
+        assert!(
+            peak.load(Ordering::SeqCst) <= 4,
+            "in-flight exceeded the cap"
+        );
     }
 }

@@ -60,8 +60,13 @@ pub fn import_existing_prompts(root: &Path, force: bool) -> std::io::Result<Impo
             continue;
         }
         let body = std::fs::read_to_string(&src_path)?;
-        std::fs::write(&dest_path, format!("<!-- imported from {src} -->\n\n{body}"))?;
-        summary.imported.push(((*src).to_string(), (*dest).to_string()));
+        std::fs::write(
+            &dest_path,
+            format!("<!-- imported from {src} -->\n\n{body}"),
+        )?;
+        summary
+            .imported
+            .push(((*src).to_string(), (*dest).to_string()));
         written.insert(dest);
     }
     Ok(summary)
@@ -107,13 +112,14 @@ mod tests {
         std::fs::write(dir.path().join("AGENTS.md"), "use tools").unwrap();
 
         let s = import_existing_prompts(dir.path(), false).unwrap();
-        assert!(s.imported.contains(&("CLAUDE.md".into(), "CLAUDE.md".into())));
-        assert!(s.imported.contains(&("AGENTS.md".into(), "AGENT.md".into())));
+        assert!(s
+            .imported
+            .contains(&("CLAUDE.md".into(), "CLAUDE.md".into())));
+        assert!(s
+            .imported
+            .contains(&("AGENTS.md".into(), "AGENT.md".into())));
 
-        let claude = std::fs::read_to_string(
-            dir.path().join(".monkey/context/CLAUDE.md"),
-        )
-        .unwrap();
+        let claude = std::fs::read_to_string(dir.path().join(".monkey/context/CLAUDE.md")).unwrap();
         assert!(claude.contains("imported from CLAUDE.md"));
         assert!(claude.contains("be terse"));
     }
@@ -134,9 +140,11 @@ mod tests {
 
         let s = import_existing_prompts(dir.path(), true).unwrap();
         assert!(s.imported.iter().any(|(src, _)| src == "CLAUDE.md"));
-        assert!(std::fs::read_to_string(dir.path().join(".monkey/context/CLAUDE.md"))
-            .unwrap()
-            .contains("new"));
+        assert!(
+            std::fs::read_to_string(dir.path().join(".monkey/context/CLAUDE.md"))
+                .unwrap()
+                .contains("new")
+        );
     }
 
     #[test]

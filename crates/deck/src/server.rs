@@ -1136,7 +1136,10 @@ mod tests {
         use monkey_core::Provider;
         let dir = tempfile::tempdir().unwrap();
         // Missing config → OpenRouter.
-        assert_eq!(default_provider_from_config(dir.path()), Provider::OpenRouter);
+        assert_eq!(
+            default_provider_from_config(dir.path()),
+            Provider::OpenRouter
+        );
 
         std::fs::create_dir_all(dir.path().join(".monkey")).unwrap();
         std::fs::write(
@@ -1144,7 +1147,10 @@ mod tests {
             r#"{ "default_provider": "self-hosted" }"#,
         )
         .unwrap();
-        assert_eq!(default_provider_from_config(dir.path()), Provider::SelfHosted);
+        assert_eq!(
+            default_provider_from_config(dir.path()),
+            Provider::SelfHosted
+        );
 
         std::fs::write(
             dir.path().join(".monkey/config.json"),

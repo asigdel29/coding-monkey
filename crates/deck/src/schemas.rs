@@ -363,7 +363,12 @@ mod tests {
     fn parses_agent_spawn_minimal() {
         let v = json!({ "type": "agent.spawn", "task": "fix the bug" });
         match parse_ws_msg(&v).unwrap() {
-            WsMsg::AgentSpawn { task, tentacle_id, harness, .. } => {
+            WsMsg::AgentSpawn {
+                task,
+                tentacle_id,
+                harness,
+                ..
+            } => {
                 assert_eq!(task, "fix the bug");
                 assert!(tentacle_id.is_none() && harness.is_none());
             }
@@ -378,7 +383,13 @@ mod tests {
             "taskType": "review", "tier": "powerful", "harness": "native"
         });
         match parse_ws_msg(&v).unwrap() {
-            WsMsg::AgentSpawn { tentacle_id, task_type, tier, harness, .. } => {
+            WsMsg::AgentSpawn {
+                tentacle_id,
+                task_type,
+                tier,
+                harness,
+                ..
+            } => {
                 assert_eq!(tentacle_id.as_deref(), Some("main"));
                 assert_eq!(task_type.as_deref(), Some("review"));
                 assert_eq!(tier.as_deref(), Some("powerful"));

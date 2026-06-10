@@ -158,7 +158,13 @@ pub async fn run_agent(
     events: Sender<AgentEvent>,
     cancel: CancellationToken,
 ) -> AgentOutcome {
-    emit(&events, AgentEvent::Started { agent_id: agent_id.clone() }).await;
+    emit(
+        &events,
+        AgentEvent::Started {
+            agent_id: agent_id.clone(),
+        },
+    )
+    .await;
 
     let mut ctx = ToolCtx::new(cfg.cwd.clone(), TOOL_OUTPUT_BUDGET);
     ctx.cancel = cancel.clone();
@@ -177,12 +183,20 @@ pub async fn run_agent(
         }
         if state.turn >= cfg.max_turns {
             let reason = format!("reached max turns ({})", cfg.max_turns);
-            emit(&events, AgentEvent::LimitReached { reason: reason.clone() }).await;
+            emit(
+                &events,
+                AgentEvent::LimitReached {
+                    reason: reason.clone(),
+                },
+            )
+            .await;
             return AgentOutcome::LimitReached { reason };
         }
 
         let mut delta_sink = |s: &str| {
-            let _ = events.try_send(AgentEvent::AssistantDelta { text: s.to_string() });
+            let _ = events.try_send(AgentEvent::AssistantDelta {
+                text: s.to_string(),
+            });
         };
         let chat = match backend
             .chat(
@@ -198,7 +212,13 @@ pub async fn run_agent(
             Ok(c) => c,
             Err(e) => {
                 let error = e.to_string();
-                emit(&events, AgentEvent::Failed { error: error.clone() }).await;
+                emit(
+                    &events,
+                    AgentEvent::Failed {
+                        error: error.clone(),
+                    },
+                )
+                .await;
                 return AgentOutcome::Failed { error };
             }
         };
@@ -207,7 +227,13 @@ pub async fn run_agent(
         state.usage = TokenUsage::merge(&state.usage, &chat.usage);
         emit(&events, AgentEvent::Usage(chat.usage.clone())).await;
         if !chat.assistant_text.is_empty() {
-            emit(&events, AgentEvent::AssistantMessage { text: chat.assistant_text.clone() }).await;
+            emit(
+                &events,
+                AgentEvent::AssistantMessage {
+                    text: chat.assistant_text.clone(),
+                },
+            )
+            .await;
         }
 
         state.transcript.push(Message::assistant(
@@ -223,14 +249,26 @@ pub async fn run_agent(
             } else {
                 chat.assistant_text.clone()
             };
-            emit(&events, AgentEvent::Finished { summary: summary.clone() }).await;
+            emit(
+                &events,
+                AgentEvent::Finished {
+                    summary: summary.clone(),
+                },
+            )
+            .await;
             return AgentOutcome::Finished { summary };
         }
 
         for call in chat.tool_calls {
             if call.name == "finish" {
                 let summary = parse_summary(&call.arguments);
-                emit(&events, AgentEvent::Finished { summary: summary.clone() }).await;
+                emit(
+                    &events,
+                    AgentEvent::Finished {
+                        summary: summary.clone(),
+                    },
+                )
+                .await;
                 return AgentOutcome::Finished { summary };
             }
 
@@ -239,7 +277,13 @@ pub async fn run_agent(
             *count += 1;
             if *count > MAX_IDENTICAL_CALLS {
                 let reason = format!("stuck repeating '{}' tool call", call.name);
-                emit(&events, AgentEvent::LimitReached { reason: reason.clone() }).await;
+                emit(
+                    &events,
+                    AgentEvent::LimitReached {
+                        reason: reason.clone(),
+                    },
+                )
+                .await;
                 return AgentOutcome::LimitReached { reason };
             }
 
@@ -405,7 +449,12 @@ mod tests {
             CancellationToken::new(),
         )
         .await;
-        assert_eq!(outcome, AgentOutcome::Finished { summary: "read it".into() });
+        assert_eq!(
+            outcome,
+            AgentOutcome::Finished {
+                summary: "read it".into()
+            }
+        );
         let events = drain(rx).await;
         assert!(events.iter().any(|e| matches!(e,
             AgentEvent::ToolCallFinished { name, ok: true, .. } if name == "read_file")));
@@ -430,7 +479,12 @@ mod tests {
             CancellationToken::new(),
         )
         .await;
-        assert_eq!(outcome, AgentOutcome::Finished { summary: "ok".into() });
+        assert_eq!(
+            outcome,
+            AgentOutcome::Finished {
+                summary: "ok".into()
+            }
+        );
         let events = drain(rx).await;
         assert!(events.iter().any(|e| matches!(e,
             AgentEvent::ToolCallFinished { name, ok: false, .. } if name == "does_not_exist")));
@@ -454,7 +508,9 @@ mod tests {
         .await;
         assert_eq!(
             outcome,
-            AgentOutcome::Finished { summary: "here is my answer".into() }
+            AgentOutcome::Finished {
+                summary: "here is my answer".into()
+            }
         );
     }
 
