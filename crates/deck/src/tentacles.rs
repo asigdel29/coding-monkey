@@ -88,7 +88,7 @@ impl TentacleStore {
             let id = entry.file_name().to_string_lossy().into_owned();
             out.push(self.hydrate(&id, &entry.path()));
         }
-        out.sort_by(|a, b| b.created_at_ms.cmp(&a.created_at_ms));
+        out.sort_by_key(|t| std::cmp::Reverse(t.created_at_ms));
         out
     }
 

@@ -73,7 +73,7 @@ jobs:
       # bump from @1.88 → @1.100 was wrong: dtolnay/rust-toolchain's ref
       # is a Rust version, and Rust 1.100 doesn't exist yet (404 from
       # static.rust-lang.org).
-      - uses: dtolnay/rust-toolchain@1.88
+      - uses: dtolnay/rust-toolchain@1.95
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --workspace --all-targets --locked
 
