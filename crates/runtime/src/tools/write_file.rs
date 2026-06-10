@@ -65,7 +65,9 @@ impl Tool for WriteFile {
 
         if let Some(parent) = resolved.parent() {
             if let Err(e) = tokio::fs::create_dir_all(parent).await {
-                return ToolResult::error(format!("write_file: cannot create '{path}' parents: {e}"));
+                return ToolResult::error(format!(
+                    "write_file: cannot create '{path}' parents: {e}"
+                ));
             }
         }
 
@@ -111,9 +113,15 @@ mod tests {
         std::fs::write(dir.path().join("f.txt"), "old").unwrap();
         let ctx = ToolCtx::new(dir.path().to_path_buf(), 1024);
         let _ = WriteFile
-            .call(&ctx, serde_json::json!({ "path": "f.txt", "content": "new" }))
+            .call(
+                &ctx,
+                serde_json::json!({ "path": "f.txt", "content": "new" }),
+            )
             .await;
-        assert_eq!(std::fs::read_to_string(dir.path().join("f.txt")).unwrap(), "new");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("f.txt")).unwrap(),
+            "new"
+        );
         // No temp file is left behind.
         assert!(!dir.path().join("f.txt.monkey-tmp").exists());
     }
@@ -122,7 +130,10 @@ mod tests {
     async fn refuses_escape() {
         let ctx = ToolCtx::new(std::path::PathBuf::from("."), 1024);
         let r = WriteFile
-            .call(&ctx, serde_json::json!({ "path": "../evil.txt", "content": "x" }))
+            .call(
+                &ctx,
+                serde_json::json!({ "path": "../evil.txt", "content": "x" }),
+            )
             .await;
         assert!(r.is_error);
     }

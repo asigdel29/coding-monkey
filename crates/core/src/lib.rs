@@ -42,10 +42,10 @@ pub mod errors;
 pub mod ids;
 /// Model registry and tier-based selector — the "right model for the job" router.
 pub mod models;
-/// Heuristic detection of a repo's tech stack and complexity from disk.
-pub mod repos;
 /// Shared token-bucket rate limiter (deck WS limits, provider call limits).
 pub mod ratelimit;
+/// Heuristic detection of a repo's tech stack and complexity from disk.
+pub mod repos;
 /// Serde data models shared across the workspace (tasks, sessions, configs).
 pub mod types;
 /// Live RAM-floor admission control for native-agent scheduling.
@@ -53,12 +53,12 @@ pub mod watchdog;
 
 pub use concurrency::{max_concurrent_agents, AgentBudget, AgentClass, HostCapacity};
 pub use endpoints::{provider_wire, ProviderWire};
-pub use ratelimit::{RateLimit, TokenBucket};
-pub use watchdog::{AdmissionDenied, MemoryWatchdog};
 pub use errors::Error;
 pub use ids::generate_id;
 pub use models::{tier_for_task, ModelRegistry, ModelSelector, ModelSpec, ModelTier, Provider};
+pub use ratelimit::{RateLimit, TokenBucket};
 pub use repos::{detect_repo, discover_repos, RepoComplexity, TechStack};
 pub use types::{
     OrchestratorConfig, RepoConfig, SessionState, TaskState, TaskStatus, TaskType, TokenUsage,
 };
+pub use watchdog::{AdmissionDenied, MemoryWatchdog};

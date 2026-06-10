@@ -30,8 +30,8 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 /// destructive utilities.
 pub fn default_allowlist() -> HashSet<String> {
     [
-        "git", "cargo", "rustc", "ls", "cat", "echo", "pwd", "head", "tail", "wc", "grep",
-        "find", "node", "npm", "pnpm", "yarn", "python3", "pytest", "go", "make",
+        "git", "cargo", "rustc", "ls", "cat", "echo", "pwd", "head", "tail", "wc", "grep", "find",
+        "node", "npm", "pnpm", "yarn", "python3", "pytest", "go", "make",
     ]
     .into_iter()
     .map(String::from)
@@ -177,7 +177,10 @@ mod tests {
     async fn rejects_disallowed_command() {
         let ctx = ToolCtx::new(std::env::temp_dir(), 4096);
         let r = RunCommand::with_defaults()
-            .call(&ctx, serde_json::json!({ "cmd": "rm", "args": ["-rf", "/"] }))
+            .call(
+                &ctx,
+                serde_json::json!({ "cmd": "rm", "args": ["-rf", "/"] }),
+            )
             .await;
         assert!(r.is_error);
         assert!(r.content.contains("not allowed"));

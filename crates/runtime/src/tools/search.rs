@@ -77,9 +77,10 @@ impl Tool for Search {
             .unwrap_or(DEFAULT_MAX_MATCHES);
         let display_root = root.clone();
 
-        let lines = tokio::task::spawn_blocking(move || run_walk(&root, &re, max_matches, &display_root))
-            .await
-            .unwrap_or_else(|e| vec![format!("search: worker failed: {e}")]);
+        let lines =
+            tokio::task::spawn_blocking(move || run_walk(&root, &re, max_matches, &display_root))
+                .await
+                .unwrap_or_else(|e| vec![format!("search: worker failed: {e}")]);
 
         if lines.is_empty() {
             return ToolResult::ok("no matches");
@@ -100,7 +101,11 @@ fn run_walk(root: &PathBuf, re: &Regex, max_matches: usize, display_root: &PathB
         if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
             continue;
         }
-        if entry.metadata().map(|m| m.len() > MAX_FILE_BYTES).unwrap_or(true) {
+        if entry
+            .metadata()
+            .map(|m| m.len() > MAX_FILE_BYTES)
+            .unwrap_or(true)
+        {
             continue;
         }
         let Ok(content) = std::fs::read_to_string(entry.path()) else {

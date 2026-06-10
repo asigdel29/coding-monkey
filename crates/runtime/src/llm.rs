@@ -132,7 +132,12 @@ impl NativeLlm {
             .list_tier(tier)
             .into_iter()
             .find(|m| m.provider == p)
-            .or_else(|| ModelSelector::new(&self.registry).prefer(p).select(task_type).cloned())
+            .or_else(|| {
+                ModelSelector::new(&self.registry)
+                    .prefer(p)
+                    .select(task_type)
+                    .cloned()
+            })
             .or_else(|| self.registry.list_all().into_iter().next())
             .expect("registry non-empty")
     }
@@ -561,7 +566,11 @@ mod tests {
     #[test]
     fn pick_prefers_requested_provider_and_tier() {
         let llm = NativeLlm::new(Provider::OpenRouter);
-        let m = llm.pick(TaskType::Chat, Some(ModelTier::Powerful), Some(Provider::Openai));
+        let m = llm.pick(
+            TaskType::Chat,
+            Some(ModelTier::Powerful),
+            Some(Provider::Openai),
+        );
         assert_eq!(m.provider, Provider::Openai);
         assert_eq!(m.tier, ModelTier::Powerful);
     }
@@ -583,7 +592,10 @@ mod tests {
         let tools = vec![serde_json::json!({"type":"function","function":{"name":"read_file"}})];
         let body = build_request_body(&model(), &msgs, &tools, 256, false);
         assert_eq!(body["messages"][0]["role"], "system");
-        assert_eq!(body["messages"][1]["tool_calls"][0]["function"]["name"], "read_file");
+        assert_eq!(
+            body["messages"][1]["tool_calls"][0]["function"]["name"],
+            "read_file"
+        );
         assert_eq!(body["messages"][2]["role"], "tool");
         assert_eq!(body["messages"][2]["tool_call_id"], "c1");
         assert_eq!(body["tool_choice"], "auto");
@@ -620,9 +632,21 @@ mod tests {
 
     #[test]
     fn error_retryability_classification() {
-        assert!(LlmError::Http { status: 429, body: String::new() }.is_retryable());
-        assert!(LlmError::Http { status: 503, body: String::new() }.is_retryable());
-        assert!(!LlmError::Http { status: 400, body: String::new() }.is_retryable());
+        assert!(LlmError::Http {
+            status: 429,
+            body: String::new()
+        }
+        .is_retryable());
+        assert!(LlmError::Http {
+            status: 503,
+            body: String::new()
+        }
+        .is_retryable());
+        assert!(!LlmError::Http {
+            status: 400,
+            body: String::new()
+        }
+        .is_retryable());
         assert!(!LlmError::MissingKey("X".into()).is_retryable());
         assert!(LlmError::Transport("reset".into()).is_retryable());
     }
@@ -666,7 +690,8 @@ mod tests {
         let mut acc = StreamAccumulator::default();
         let mut got = String::new();
         // First buffer ends mid-line; the remainder completes it next call.
-        let mut buf = String::from("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\ndata: {\"choi");
+        let mut buf =
+            String::from("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\ndata: {\"choi");
         {
             let mut cb = |s: &str| got.push_str(s);
             assert!(!drain_sse_lines(&mut buf, &mut acc, &mut cb).unwrap());

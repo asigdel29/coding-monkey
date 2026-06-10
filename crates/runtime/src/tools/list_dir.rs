@@ -58,11 +58,7 @@ impl Tool for ListDir {
                     if name == ".git" {
                         continue;
                     }
-                    let is_dir = entry
-                        .file_type()
-                        .await
-                        .map(|t| t.is_dir())
-                        .unwrap_or(false);
+                    let is_dir = entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false);
                     entries.push(if is_dir { format!("{name}/") } else { name });
                 }
                 Ok(None) => break,

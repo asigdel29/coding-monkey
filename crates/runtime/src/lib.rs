@@ -46,10 +46,10 @@ pub mod agent;
 pub mod event;
 /// Working-directory path jail for filesystem tools.
 pub mod fs_guard;
-/// Tool-calling LLM chat client.
-pub mod llm;
 /// Per-provider rate limiting and shared 429 backoff.
 pub mod limiter;
+/// Tool-calling LLM chat client.
+pub mod llm;
 /// Bounded, class-partitioned concurrent agent execution.
 pub mod scheduler;
 /// Conversation state: transcript, config, outcome.
@@ -60,13 +60,13 @@ pub mod tool;
 pub mod tools;
 
 pub use agent::{run_agent, ChatBackend, LimitedBackend};
-pub use scheduler::{
-    native_agent_job, AgentJob, Scheduler, SchedulerConfig, SchedulerStats, SubmitError, WorkClass,
-};
 pub use event::AgentEvent;
 pub use fs_guard::{FsError, FsGuard};
 pub use limiter::{LimiterConfig, ProviderLimiter};
 pub use llm::{ChatResult, LlmError, NativeLlm};
+pub use scheduler::{
+    native_agent_job, AgentJob, Scheduler, SchedulerConfig, SchedulerStats, SubmitError, WorkClass,
+};
 pub use state::{AgentConfig, AgentOutcome, AgentState, Message, Role, ToolCall};
 pub use tool::{Tool, ToolCtx, ToolRef, ToolRegistry, ToolResult};
 pub use tools::default_tools;

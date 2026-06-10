@@ -157,10 +157,7 @@ mod tests {
     #[test]
     fn rejects_absolute_outside_root() {
         let g = FsGuard::rooted("/srv/repo");
-        assert!(matches!(
-            g.resolve("/etc/passwd"),
-            Err(FsError::Escape(_))
-        ));
+        assert!(matches!(g.resolve("/etc/passwd"), Err(FsError::Escape(_))));
     }
 
     #[test]
