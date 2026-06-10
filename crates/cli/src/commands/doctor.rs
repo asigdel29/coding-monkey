@@ -55,9 +55,14 @@ fn print_human(r: &DoctorReport) {
         version_or_dash(&r.git_version)
     );
     println!();
-    println!("  Keys");
+    println!("  Keys & endpoints");
     println!("    {} OPENROUTER_API_KEY", mark(r.openrouter_key));
     println!("    {} OPENAI_API_KEY", mark(r.openai_key));
+    println!(
+        "    {} self-hosted endpoint  {}",
+        mark(r.self_hosted_url.is_some()),
+        r.self_hosted_url.as_deref().unwrap_or("-")
+    );
     println!();
     println!("  Repo");
     println!("    {} inside git work tree", mark(r.in_git_repo));
