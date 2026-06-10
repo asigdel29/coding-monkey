@@ -39,7 +39,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -47,6 +47,10 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
 use monkey_agents::{AuditEventType, AuditLogger};
+use monkey_runtime::{
+    native_agent_job, AgentConfig, AgentEvent, NativeLlm, ProviderLimiter, Scheduler,
+    SchedulerConfig, ToolRegistry, WorkClass,
+};
 
 use crate::schemas::{parse_ws_msg, WsMsg};
 use crate::tentacles::TentacleStore;
@@ -154,10 +158,23 @@ struct AppState {
     tentacles: TentacleStore,
     audit: Mutex<AuditLogger>,
     terminals: Mutex<HashMap<String, monkey_agents::AgentTerminal>>,
-    /// Most agent terminals allowed at once, derived from host RAM/CPU at
-    /// startup (see `monkey_core::concurrency`). Spawns past this are
+    /// Most PTY agent terminals allowed at once, derived from host RAM/CPU
+    /// at startup using the heavyweight (PTY) budget. Spawns past this are
     /// rejected so the box never thrashes.
     max_agents: usize,
+    /// Scheduler for native in-process agents.
+    scheduler: Arc<Scheduler>,
+    /// Shared LLM client for native agents.
+    llm: Arc<NativeLlm>,
+    /// Shared provider rate limiter for native agents.
+    limiter: Arc<ProviderLimiter>,
+    /// Built-in tool registry for native agents.
+    tools: Arc<ToolRegistry>,
+    /// Ids of currently-running native agents (for the cap and listing).
+    native_agents: Arc<Mutex<HashSet<String>>>,
+    /// Most native agents allowed at once, from the lightweight budget —
+    /// 100+ on a Pi 5 where the PTY cap is ~10.
+    native_max_agents: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -213,6 +230,26 @@ pub async fn start_deck(opts: DeckOpts) -> anyhow::Result<DeckHandle> {
         )
         .ok();
 
+    // Concurrency ceilings: PTY agents are heavyweight (~10 on a Pi),
+    // native agents are lightweight network-bound tasks (100+ on a Pi).
+    let host_cap = monkey_core::concurrency::HostCapacity::detect();
+    let max_agents = monkey_core::concurrency::max_concurrent_agents(
+        &host_cap,
+        &monkey_core::concurrency::AgentBudget::pty(),
+    );
+    let native_max_agents = monkey_core::concurrency::max_concurrent_agents(
+        &host_cap,
+        &monkey_core::concurrency::AgentBudget::native(),
+    );
+    let watchdog = Arc::new(monkey_core::MemoryWatchdog::default());
+    let scheduler = Arc::new(Scheduler::new(
+        SchedulerConfig::from_max_agents(native_max_agents),
+        watchdog,
+    ));
+    let llm = Arc::new(NativeLlm::new(monkey_core::Provider::OpenRouter));
+    let limiter = Arc::new(ProviderLimiter::with_defaults());
+    let tools = Arc::new(monkey_runtime::default_tools());
+
     let state = Arc::new(AppState {
         cwd: opts.cwd.clone(),
         agent: opts.agent.clone(),
@@ -233,10 +270,13 @@ pub async fn start_deck(opts: DeckOpts) -> anyhow::Result<DeckHandle> {
         tentacles: TentacleStore::new(&opts.cwd),
         audit: Mutex::new(audit),
         terminals: Mutex::new(HashMap::new()),
-        max_agents: monkey_core::concurrency::max_concurrent_agents(
-            &monkey_core::concurrency::HostCapacity::detect(),
-            &monkey_core::concurrency::AgentBudget::default(),
-        ),
+        max_agents,
+        scheduler,
+        llm,
+        limiter,
+        tools,
+        native_agents: Arc::new(Mutex::new(HashSet::new())),
+        native_max_agents,
     });
 
     let mut app = Router::new()
@@ -573,17 +613,24 @@ async fn handle_ws(socket: WebSocket, state: Arc<AppState>) {
         }
     }
 
-    // Cleanup: kill any owned terminals, log disconnect.
+    // Cleanup: kill any owned terminals and cancel owned native agents.
     for id in &owned {
         if let Some(t) = state.terminals.lock().await.get(id) {
             let _ = t.kill();
         }
+        // No-op for ids that aren't native agents.
+        state.scheduler.cancel(id);
     }
     state
         .terminals
         .lock()
         .await
         .retain(|id, _| !owned.contains(id));
+    state
+        .native_agents
+        .lock()
+        .await
+        .retain(|id| !owned.contains(id));
     audit(
         &state,
         "ws.disconnect",
@@ -779,21 +826,186 @@ async fn dispatch(
                 audit(state, "term.kill", serde_json::json!({ "id": id })).await;
             }
         }
-        WsMsg::AgentSpawn { .. } | WsMsg::AgentCancel { .. } | WsMsg::AgentList => {
-            // Native-agent execution is wired in the next change; the schema
-            // and routing land here first so the protocol is reviewable on
-            // its own.
+        WsMsg::AgentSpawn {
+            task,
+            tentacle_id,
+            task_type,
+            tier,
+            ..
+        } => {
+            let running = state.native_agents.lock().await.len();
+            if running >= state.native_max_agents {
+                send_json(
+                    sender,
+                    serde_json::json!({
+                        "type": "agent.error",
+                        "error": format!(
+                            "native agent capacity reached ({running}/{}). Cancel one or run on a larger host.",
+                            state.native_max_agents
+                        ),
+                    }),
+                )
+                .await?;
+                return Ok(());
+            }
+
+            let id = monkey_core::generate_id("agent");
+            let mut cfg = AgentConfig::new(task.clone(), state.cwd.clone());
+            cfg.tentacle_id = tentacle_id.clone();
+            if let Some(tt) = task_type {
+                cfg.task_type = map_task_type(tt);
+            }
+            cfg.force_tier = tier.as_deref().and_then(map_tier);
+            let model = state.llm.pick(cfg.task_type, cfg.force_tier, None);
+
+            // Forward the agent's events to this connection's outbound sink.
+            let (ev_tx, ev_rx) = tokio::sync::mpsc::channel::<AgentEvent>(256);
+            spawn_event_forwarder(
+                id.clone(),
+                ev_rx,
+                sender.clone(),
+                Arc::clone(&state.native_agents),
+            );
+
+            let class = if tentacle_id.is_some() {
+                WorkClass::Scoped
+            } else {
+                WorkClass::Shared
+            };
+            let job = native_agent_job(
+                id.clone(),
+                class,
+                cfg,
+                Arc::clone(&state.llm),
+                Arc::clone(&state.limiter),
+                Arc::clone(&state.tools),
+                model,
+                ev_tx,
+            );
+            match state.scheduler.submit(job) {
+                Ok(_) => {
+                    state.native_agents.lock().await.insert(id.clone());
+                    owned.push(id.clone());
+                    audit(
+                        state,
+                        "agent.spawn",
+                        serde_json::json!({ "id": id, "kind": "native", "tentacle_id": tentacle_id }),
+                    )
+                    .await;
+                    send_json(
+                        sender,
+                        serde_json::json!({ "type": "agent.spawned", "id": id, "tentacle_id": tentacle_id }),
+                    )
+                    .await?;
+                }
+                Err(e) => {
+                    send_json(
+                        sender,
+                        serde_json::json!({ "type": "agent.error", "error": e.to_string() }),
+                    )
+                    .await?;
+                }
+            }
+        }
+        WsMsg::AgentCancel { id } => {
+            let found = state.scheduler.cancel(id);
+            if found {
+                audit(state, "agent.cancel", serde_json::json!({ "id": id })).await;
+            }
+            send_json(
+                sender,
+                serde_json::json!({ "type": "agent.cancelled", "id": id, "found": found }),
+            )
+            .await?;
+        }
+        WsMsg::AgentList => {
+            let ids: Vec<String> = state.native_agents.lock().await.iter().cloned().collect();
+            let stats = state.scheduler.stats();
             send_json(
                 sender,
                 serde_json::json!({
-                    "type": "agent.error",
-                    "error": "native agents are not yet enabled on this build",
+                    "type": "agent.list",
+                    "agents": ids,
+                    "max_agents": state.native_max_agents,
+                    "running": stats.running,
+                    "submitted": stats.submitted,
+                    "completed": stats.completed,
+                    "rejected": stats.rejected,
                 }),
             )
             .await?;
         }
     }
     Ok(())
+}
+
+/// Map a wire task-type string to a [`monkey_core::TaskType`], defaulting to
+/// `Edit` for unrecognized values.
+fn map_task_type(s: &str) -> monkey_core::TaskType {
+    use monkey_core::TaskType::*;
+    match s {
+        "chat" => Chat,
+        "explain" => Explain,
+        "generate" => Generate,
+        "engulf" => Engulf,
+        "refactor" => Refactor,
+        "investigate" => Investigate,
+        "review" => Review,
+        "security_audit" | "securityaudit" => SecurityAudit,
+        _ => Edit,
+    }
+}
+
+/// Map a wire tier string to a [`monkey_core::ModelTier`]; `None` for
+/// unrecognized values (the task default applies).
+fn map_tier(s: &str) -> Option<monkey_core::ModelTier> {
+    use monkey_core::ModelTier::*;
+    match s {
+        "fast" => Some(Fast),
+        "balanced" => Some(Balanced),
+        "powerful" => Some(Powerful),
+        _ => None,
+    }
+}
+
+/// Pump one native agent's events to a connection's outbound sink as
+/// `agent.event` frames, then an `agent.finished` and cleanup on the
+/// terminal event. High-volume token deltas are dropped under backpressure
+/// (try_send); all other events, including the terminal one, are awaited so
+/// they are never lost.
+fn spawn_event_forwarder(
+    id: String,
+    mut rx: tokio::sync::mpsc::Receiver<AgentEvent>,
+    out: OutboundTx,
+    agents: Arc<Mutex<HashSet<String>>>,
+) {
+    tokio::spawn(async move {
+        while let Some(ev) = rx.recv().await {
+            let terminal = ev.is_terminal();
+            let lossy = ev.is_lossy();
+            let frame = Message::Text(
+                serde_json::json!({ "type": "agent.event", "id": id.clone(), "event": ev })
+                    .to_string()
+                    .into(),
+            );
+            if lossy {
+                let _ = out.try_send(frame);
+            } else if out.send(frame).await.is_err() {
+                break;
+            }
+            if terminal {
+                let _ = out
+                    .send(Message::Text(
+                        serde_json::json!({ "type": "agent.finished", "id": id.clone() })
+                            .to_string()
+                            .into(),
+                    ))
+                    .await;
+                agents.lock().await.remove(&id);
+                break;
+            }
+        }
+    });
 }
 
 async fn send_json(sender: &OutboundTx, payload: serde_json::Value) -> anyhow::Result<()> {
