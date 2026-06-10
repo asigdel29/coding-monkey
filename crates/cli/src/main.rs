@@ -47,6 +47,8 @@ struct Cli {
 enum Cmd {
     /// Scaffold .monkey/ in the project.
     Init(commands::init::Args),
+    /// Import existing agent prompts (CLAUDE.md, AGENTS.md, …) into .monkey/.
+    Import(commands::import::Args),
     /// Deep-learn the codebase.
     Engulf(commands::engulf::Args),
     /// Web frontend dashboard.
@@ -81,6 +83,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Some(Cmd::Init(a)) => commands::init::run(a).await,
+        Some(Cmd::Import(a)) => commands::import::run(a).await,
         Some(Cmd::Engulf(a)) => commands::engulf::run(a).await,
         Some(Cmd::Deck(a)) => commands::deck::run(a).await,
         Some(Cmd::Orchestrate(a)) => commands::orchestrate::run(a).await,
