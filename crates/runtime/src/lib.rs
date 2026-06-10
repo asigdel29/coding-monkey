@@ -21,6 +21,7 @@
    2026-06-09   Anubhav Sigdel  add run_command tool (allowlisted, no shell)
    2026-06-09   Anubhav Sigdel  add agent loop (run_agent + ChatBackend)
    2026-06-09   Anubhav Sigdel  add provider limiter (shared 429 backoff)
+   2026-06-09   Anubhav Sigdel  add scheduler (class quotas + admission)
 */
 
 #![deny(unsafe_code)]
@@ -37,6 +38,7 @@
 //! - [`fs_guard`] — working-directory path jail for file tools
 //! - [`tools`] — built-in agent tools
 //! - [`agent`] — the agent loop driving tools + LLM to completion
+//! - [`scheduler`] — bounded, class-partitioned concurrent execution
 
 /// The agent loop and the `ChatBackend` abstraction it runs on.
 pub mod agent;
@@ -48,6 +50,8 @@ pub mod fs_guard;
 pub mod llm;
 /// Per-provider rate limiting and shared 429 backoff.
 pub mod limiter;
+/// Bounded, class-partitioned concurrent agent execution.
+pub mod scheduler;
 /// Conversation state: transcript, config, outcome.
 pub mod state;
 /// Tool interface, execution context, and registry.
@@ -55,7 +59,10 @@ pub mod tool;
 /// Built-in agent tools.
 pub mod tools;
 
-pub use agent::{run_agent, ChatBackend};
+pub use agent::{run_agent, ChatBackend, LimitedBackend};
+pub use scheduler::{
+    native_agent_job, AgentJob, Scheduler, SchedulerConfig, SchedulerStats, SubmitError, WorkClass,
+};
 pub use event::AgentEvent;
 pub use fs_guard::{FsError, FsGuard};
 pub use limiter::{LimiterConfig, ProviderLimiter};
