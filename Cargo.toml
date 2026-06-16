@@ -70,7 +70,7 @@ hex = "0.4"
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
 axum = { version = "0.8", features = ["ws", "macros"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
+tower-http = { version = "0.7", features = ["cors", "fs", "trace"] }
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
 
 # PTY
