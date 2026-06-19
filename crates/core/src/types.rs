@@ -206,6 +206,70 @@ pub struct LocalModelDef {
     pub host: LocalHost,
 }
 
+/// How the orchestrator chooses (and re-chooses) a model for a task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum OrchestratorStrategy {
+    /// Score task difficulty to pick the initial model, then escalate to a
+    /// stronger tier when a run trips an escalation trigger. The default.
+    DifficultyEscalation,
+    /// Static `task_type → tier` routing only; never escalate.
+    TierOnly,
+}
+
+/// An agent outcome that justifies retrying a task on a stronger model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EscalationTrigger {
+    /// The run errored (e.g. the model's endpoint was unreachable).
+    Failed,
+    /// The run hit a guard (max turns, or stuck repeating a tool call).
+    LimitReached,
+}
+
+/// Orchestration policy, deserialized from `.monkey/config.json`'s
+/// `orchestrator` object. All fields default, so the section is optional.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrchestratorPolicy {
+    /// Selection strategy.
+    #[serde(default = "default_strategy")]
+    pub strategy: OrchestratorStrategy,
+    /// Outcomes that trigger an escalation to the next-stronger model.
+    #[serde(default = "default_escalate_on")]
+    pub escalate_on: Vec<EscalationTrigger>,
+    /// Maximum number of escalations for a single task (a small cap keeps a
+    /// failing LAN box from looping the ladder).
+    #[serde(default = "default_max_escalations")]
+    pub max_escalations: u32,
+}
+
+fn default_strategy() -> OrchestratorStrategy {
+    OrchestratorStrategy::DifficultyEscalation
+}
+fn default_escalate_on() -> Vec<EscalationTrigger> {
+    vec![EscalationTrigger::Failed, EscalationTrigger::LimitReached]
+}
+fn default_max_escalations() -> u32 {
+    1
+}
+
+impl Default for OrchestratorPolicy {
+    fn default() -> Self {
+        Self {
+            strategy: default_strategy(),
+            escalate_on: default_escalate_on(),
+            max_escalations: default_max_escalations(),
+        }
+    }
+}
+
+impl OrchestratorPolicy {
+    /// Whether `trigger` should cause an escalation under this policy.
+    pub fn escalates_on(&self, trigger: EscalationTrigger) -> bool {
+        self.strategy != OrchestratorStrategy::TierOnly && self.escalate_on.contains(&trigger)
+    }
+}
+
 /// Top-level orchestrator config (deserialized from `.monkey/config.json`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrchestratorConfig {
@@ -226,6 +290,9 @@ pub struct OrchestratorConfig {
     /// Locally-served open-weights models folded into the registry at startup.
     #[serde(default)]
     pub local_models: Vec<LocalModelDef>,
+    /// Model-selection and escalation policy.
+    #[serde(default)]
+    pub orchestrator: OrchestratorPolicy,
     /// Severity that fails the gauntlet.
     #[serde(default = "default_fail_on")]
     pub fail_on: String,
@@ -258,6 +325,7 @@ impl Default for OrchestratorConfig {
             default_tier: default_tier(),
             default_model: None,
             local_models: Vec::new(),
+            orchestrator: OrchestratorPolicy::default(),
             fail_on: default_fail_on(),
             budget: Budget::default(),
         }

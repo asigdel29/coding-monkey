@@ -59,7 +59,7 @@ pub use models::{tier_for_task, ModelRegistry, ModelSelector, ModelSpec, ModelTi
 pub use ratelimit::{RateLimit, TokenBucket};
 pub use repos::{detect_repo, discover_repos, RepoComplexity, TechStack};
 pub use types::{
-    LocalHost, LocalModelDef, OrchestratorConfig, RepoConfig, SessionState, TaskState, TaskStatus,
-    TaskType, TokenUsage,
+    EscalationTrigger, LocalHost, LocalModelDef, OrchestratorConfig, OrchestratorPolicy,
+    OrchestratorStrategy, RepoConfig, SessionState, TaskState, TaskStatus, TaskType, TokenUsage,
 };
 pub use watchdog::{AdmissionDenied, MemoryWatchdog};
