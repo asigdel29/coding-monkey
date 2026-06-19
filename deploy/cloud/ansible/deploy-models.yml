@@ -1,0 +1,52 @@
+# =============================================================================
+#  File: deploy/cloud/ansible/deploy-models.yml
+#  Purpose: place the quantized weights on the NVMe volume, ship the Compose +
+#           llama-swap files, bring up the swapping gateway, and wait for it to
+#           report healthy. Bound to the WireGuard address (set by WG_IP).
+#  Run:    make deploy
+#  History
+#  Date         Author          Changes
+#  2026-06-19   Anubhav Sigdel  initial — fetch weights, compose up, healthcheck
+# =============================================================================
+---
+- name: Deploy strong-tier models
+  hosts: gpu_box
+  become: true
+  vars:
+    compose_dir: /opt/monkey-cloud/compose
+  tasks:
+    - name: Download model weights to the NVMe volume
+      ansible.builtin.get_url:
+        url: "{{ item.url }}"
+        dest: "{{ models_dir }}/{{ item.filename }}"
+        checksum: "sha256:{{ item.sha256 }}"
+        mode: "0644"
+      loop: "{{ models }}"
+      loop_control:
+        label: "{{ item.id }}"
+
+    - name: Ship the Compose stack (compose file + llama-swap config)
+      ansible.builtin.copy:
+        src: "../compose/{{ item }}"
+        dest: "{{ compose_dir }}/{{ item }}"
+        mode: "0644"
+      loop:
+        - docker-compose.yml
+        - llama-swap.yaml
+
+    - name: Bring up the llama-swap gateway
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_dir }}"
+        state: present
+      environment:
+        WG_IP: "{{ wg_gateway_ip }}"
+        MODELS_DIR: "{{ models_dir }}"
+
+    - name: Wait for the gateway to report healthy
+      ansible.builtin.uri:
+        url: "http://{{ wg_gateway_ip }}:{{ inference_port }}/v1/models"
+        status_code: 200
+      register: health
+      retries: 30
+      delay: 10
+      until: health.status == 200

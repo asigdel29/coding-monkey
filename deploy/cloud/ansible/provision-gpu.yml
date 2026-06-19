@@ -1,0 +1,83 @@
+# =============================================================================
+#  File: deploy/cloud/ansible/provision-gpu.yml
+#  Purpose: prepare the colo GPU box — Docker + NVIDIA Container Toolkit, the
+#           NVMe weights mount, a locked-down firewall, and the WireGuard
+#           gateway. Idempotent; safe to re-run.
+#
+#  Assumes the NVIDIA driver is already installed (driver install varies by
+#  card/OS and is left to the operator; `nvidia-smi` must work). Run:
+#      make provision
+#  History
+#  Date         Author          Changes
+#  2026-06-19   Anubhav Sigdel  initial — docker, nvidia toolkit, ufw, wireguard
+# =============================================================================
+---
+- name: Provision colo GPU box
+  hosts: gpu_box
+  become: true
+  tasks:
+    - name: Verify the NVIDIA driver is present
+      ansible.builtin.command: nvidia-smi
+      changed_when: false
+
+    - name: Install base packages (Docker, WireGuard, helpers)
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose-plugin
+          - nvidia-container-toolkit
+          - wireguard
+          - ufw
+          - curl
+        state: present
+        update_cache: true
+
+    - name: Configure Docker to use the NVIDIA runtime
+      ansible.builtin.command: nvidia-ctk runtime configure --runtime=docker
+      notify: Restart docker
+      changed_when: true
+
+    - name: Ensure the NVMe weights directory exists
+      ansible.builtin.file:
+        path: "{{ models_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Firewall — default deny inbound, allow SSH + WireGuard only
+      community.general.ufw:
+        rule: "{{ item.rule }}"
+        port: "{{ item.port }}"
+        proto: "{{ item.proto }}"
+      loop:
+        - { rule: allow, port: "22", proto: tcp }
+        - { rule: allow, port: "{{ wg_listen_port }}", proto: udp }
+
+    - name: Firewall — enable with default deny
+      community.general.ufw:
+        state: enabled
+        default: deny
+        direction: incoming
+
+    - name: Render the WireGuard gateway config
+      ansible.builtin.template:
+        src: "../wireguard/wg0.conf.j2"
+        dest: /etc/wireguard/wg0.conf
+        mode: "0600"
+      notify: Restart wireguard
+
+    - name: Enable the WireGuard tunnel
+      ansible.builtin.systemd:
+        name: wg-quick@wg0
+        enabled: true
+        state: started
+
+  handlers:
+    - name: Restart docker
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
+
+    - name: Restart wireguard
+      ansible.builtin.systemd:
+        name: wg-quick@wg0
+        state: restarted

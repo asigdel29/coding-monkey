@@ -1,0 +1,54 @@
+# =============================================================================
+#  File: deploy/cloud/ansible/configure-pi.yml
+#  Purpose: bring the home Pi onto the VPN and point its orchestrator at the
+#           cloud strong tier. Installs the WireGuard peer and rewrites the
+#           GLM-5.2 / Kimi K2.6 entries in the project's .monkey/config.json so
+#           their base_url is the gateway and host becomes "cloud". The Pi-local
+#           Qwen entry is left untouched.
+#  Run:    make connect
+#  History
+#  Date         Author          Changes
+#  2026-06-19   Anubhav Sigdel  initial — wireguard peer + config repoint
+# =============================================================================
+---
+- name: Connect the Pi to the cloud strong tier
+  hosts: pi
+  become: true
+  tasks:
+    - name: Install WireGuard and jq
+      ansible.builtin.apt:
+        name: [wireguard, jq]
+        state: present
+        update_cache: true
+
+    - name: Render the Pi WireGuard peer config
+      ansible.builtin.template:
+        src: "../wireguard/pi-peer.conf.j2"
+        dest: /etc/wireguard/wg0.conf
+        mode: "0600"
+      notify: Restart wireguard
+
+    - name: Enable the tunnel to the gateway
+      ansible.builtin.systemd:
+        name: wg-quick@wg0
+        enabled: true
+        state: started
+
+    - name: Repoint GLM-5.2 / Kimi K2.6 at the cloud gateway (host=cloud)
+      ansible.builtin.shell:
+        cmd: >
+          jq --arg url "http://{{ wg_gateway_ip }}:{{ inference_port }}"
+          '.local_models |= map(
+             if (.id == "glm-5.2" or .id == "kimi-k2.6")
+             then .base_url = $url | .host = "cloud"
+             else . end)'
+          "{{ pi_monkey_config }}" > "{{ pi_monkey_config }}.tmp"
+          && mv "{{ pi_monkey_config }}.tmp" "{{ pi_monkey_config }}"
+      become_user: pi
+      changed_when: true
+
+  handlers:
+    - name: Restart wireguard
+      ansible.builtin.systemd:
+        name: wg-quick@wg0
+        state: restarted
