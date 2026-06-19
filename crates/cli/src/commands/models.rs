@@ -50,6 +50,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         let host = match hosts.get(m.id.as_str()) {
             Some(LocalHost::Pi) => "pi",
             Some(LocalHost::Lan) => "lan",
+            Some(LocalHost::Cloud) => "cloud",
             None => match m.provider {
                 Provider::SelfHosted => "self-hosted",
                 _ => "hosted",

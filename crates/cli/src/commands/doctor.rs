@@ -105,8 +105,9 @@ fn print_human(r: &DoctorReport, local: &[LocalModelStatus]) {
         println!("  Local models");
         for m in local {
             let host = match m.host {
-                LocalHost::Pi => "pi ",
-                LocalHost::Lan => "lan",
+                LocalHost::Pi => "pi   ",
+                LocalHost::Lan => "lan  ",
+                LocalHost::Cloud => "cloud",
             };
             println!(
                 "    {} {host}  {:24} {}",
