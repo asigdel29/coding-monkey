@@ -1,0 +1,51 @@
+# =============================================================================
+#  File: deploy/cloud/compose/docker-compose.yml
+#
+#  Purpose
+#  Run the model-swapping inference gateway for coding-monkey's strong tier on
+#  a personal cloud box (a self-managed colo/home-lab GPU server). A single
+#  llama-swap service exposes one OpenAI-compatible endpoint and loads exactly
+#  one large model at a time (GLM-5.2 warm by default, Kimi K2.6 on demand),
+#  keyed by the request's `model` field. The port is bound to the WireGuard
+#  interface only, so inference is never publicly reachable.
+#
+#  Usage
+#  Brought up by deploy/cloud/ansible/deploy-models.yml after the GPU box is
+#  provisioned and the WireGuard tunnel is up. Standalone:
+#      WG_IP=10.10.0.1 MODELS_DIR=/data/models docker compose up -d
+#
+#  History
+#  Date         Author          Changes
+#  2026-06-19   Anubhav Sigdel  initial — llama-swap gateway, GPU + wg0 bind
+# =============================================================================
+
+services:
+  llama-swap:
+    # CUDA image bundling llama-server; pin a digest in production.
+    image: ghcr.io/mostlygeek/llama-swap:cuda
+    container_name: monkey-llama-swap
+    restart: unless-stopped
+    # Bind ONLY to the private WireGuard address — never 0.0.0.0. The wg0
+    # interface must exist on the host before this service starts.
+    ports:
+      - "${WG_IP:-10.10.0.1}:8080:8080"
+    volumes:
+      # Quantized weights live on the NVMe data volume, mounted read-only.
+      - "${MODELS_DIR:-/data/models}:/models:ro"
+      # The swap policy / per-model commands.
+      - "./llama-swap.yaml:/app/config.yaml:ro"
+    command: ["--config", "/app/config.yaml", "--listen", ":8080"]
+    # Expose all GPUs to the container (Compose GPU reservation).
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: ["gpu"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/v1/models"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
