@@ -1,0 +1,41 @@
+# =============================================================================
+#  File: deploy/cloud/ansible/group_vars/all.yml
+#  Purpose: shared variables for the personal-cloud deployment — VPN addressing,
+#           model weights, and paths. Secrets (WireGuard private keys) live in a
+#           vault file (group_vars/vault.yml, encrypted with ansible-vault) and
+#           are referenced here as vault_* — NEVER commit real keys.
+#  History
+#  Date         Author          Changes
+#  2026-06-19   Anubhav Sigdel  initial — VPN, models, paths
+# =============================================================================
+
+# --- WireGuard private VPN -------------------------------------------------
+wg_listen_port: 51820
+wg_gateway_ip: "10.10.0.1"          # colo box, tunnel-side address
+wg_pi_ip: "10.10.0.2"               # home Pi, tunnel-side address
+colo_public_host: "colo.example.net" # public host/IP the Pi dials
+# Keys (decrypted from group_vars/vault.yml at run time):
+wg_gateway_private_key: "{{ vault_wg_gateway_private_key }}"
+wg_gateway_public_key: "{{ vault_wg_gateway_public_key }}"
+wg_pi_private_key: "{{ vault_wg_pi_private_key }}"
+wg_pi_public_key: "{{ vault_wg_pi_public_key }}"
+
+# --- Inference -------------------------------------------------------------
+models_dir: "/data/models"          # NVMe volume holding the GGUF weights
+inference_port: 8080
+
+# Large models served one-at-a-time by llama-swap. `id` MUST match the Pi's
+# .monkey/config.json local_models and the keys in compose/llama-swap.yaml.
+# Pin real URLs + sha256 before running (Unsloth dynamic GGUFs recommended).
+models:
+  - id: "glm-5.2"
+    filename: "glm-5.2-Q4_K_M.gguf"
+    url: "https://huggingface.co/REPLACE/GLM-5.2-GGUF/resolve/main/glm-5.2-Q4_K_M.gguf"
+    sha256: "REPLACE_WITH_CHECKSUM"
+  - id: "kimi-k2.6"
+    filename: "kimi-k2.6-Q4_K_M.gguf"
+    url: "https://huggingface.co/REPLACE/Kimi-K2.6-GGUF/resolve/main/kimi-k2.6-Q4_K_M.gguf"
+    sha256: "REPLACE_WITH_CHECKSUM"
+
+# --- Pi orchestrator -------------------------------------------------------
+pi_monkey_config: "/home/pi/code/.monkey/config.json"  # project the Pi orchestrates

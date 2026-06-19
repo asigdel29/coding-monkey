@@ -1,0 +1,24 @@
+# =============================================================================
+#  File: deploy/cloud/ansible/teardown.yml
+#  Purpose: stop serving and free the GPUs on the colo box while leaving the
+#           downloaded weights on the NVMe volume (so a later `make deploy` is
+#           fast). The WireGuard tunnel is left up for management.
+#  Run:    make down
+#  History
+#  Date         Author          Changes
+#  2026-06-19   Anubhav Sigdel  initial — compose down, keep weights
+# =============================================================================
+---
+- name: Stop the strong-tier gateway
+  hosts: gpu_box
+  become: true
+  vars:
+    compose_dir: /opt/monkey-cloud/compose
+  tasks:
+    - name: Bring down the llama-swap gateway (frees GPUs)
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_dir }}"
+        state: absent
+      environment:
+        WG_IP: "{{ wg_gateway_ip }}"
+        MODELS_DIR: "{{ models_dir }}"
