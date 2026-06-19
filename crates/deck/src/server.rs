@@ -246,7 +246,10 @@ pub async fn start_deck(opts: DeckOpts) -> anyhow::Result<DeckHandle> {
         SchedulerConfig::from_max_agents(native_max_agents),
         watchdog,
     ));
-    let llm = Arc::new(NativeLlm::new(default_provider_from_config(&opts.cwd)));
+    let llm = Arc::new(NativeLlm::with_registry(
+        default_provider_from_config(&opts.cwd),
+        registry_from_config(&opts.cwd),
+    ));
     let limiter = Arc::new(ProviderLimiter::with_defaults());
     let tools = Arc::new(monkey_runtime::default_tools());
 
@@ -959,6 +962,19 @@ fn default_provider_from_config(cwd: &std::path::Path) -> monkey_core::Provider 
         Some("self-hosted") | Some("selfhosted") => Provider::SelfHosted,
         _ => Provider::OpenRouter,
     }
+}
+
+/// Build the model registry for native agents, folding in any locally-served
+/// models declared in `.monkey/config.json`. Falls back to the builtin lineup
+/// when the file is absent or unparseable, so a missing/partial config never
+/// breaks startup.
+fn registry_from_config(cwd: &std::path::Path) -> monkey_core::ModelRegistry {
+    use monkey_core::{ModelRegistry, OrchestratorConfig};
+    std::fs::read_to_string(cwd.join(".monkey").join("config.json"))
+        .ok()
+        .and_then(|raw| serde_json::from_str::<OrchestratorConfig>(&raw).ok())
+        .map(|cfg| ModelRegistry::with_config(&cfg))
+        .unwrap_or_else(ModelRegistry::with_builtin)
 }
 
 /// Map a wire task-type string to a [`monkey_core::TaskType`], defaulting to
