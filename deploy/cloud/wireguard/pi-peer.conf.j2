@@ -1,0 +1,27 @@
+# =============================================================================
+#  File: deploy/cloud/wireguard/pi-peer.conf.j2  (rendered to /etc/wireguard/wg0.conf on the Pi)
+#
+#  Purpose
+#  WireGuard config for the home Raspberry Pi. It dials the colo gateway and
+#  routes only the gateway's /32 over the tunnel, so the Pi reaches the strong
+#  tier at {{ wg_gateway_ip }}:8080 while all its other traffic is unaffected.
+#  PersistentKeepalive holds the tunnel open through the Pi's NAT.
+#
+#  Rendered by deploy/cloud/ansible/configure-pi.yml. Keys come from
+#  ansible-vault; never commit real keys.
+#
+#  History
+#  Date         Author          Changes
+#  2026-06-19   Anubhav Sigdel  initial — Pi peer dialing the colo gateway
+# =============================================================================
+
+[Interface]
+Address = {{ wg_pi_ip }}/24
+PrivateKey = {{ wg_pi_private_key }}
+
+# Colo GPU box (the strong-tier gateway).
+[Peer]
+PublicKey = {{ wg_gateway_public_key }}
+Endpoint = {{ colo_public_host }}:{{ wg_listen_port }}
+AllowedIPs = {{ wg_gateway_ip }}/32
+PersistentKeepalive = 25
