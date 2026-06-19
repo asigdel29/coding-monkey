@@ -1,0 +1,30 @@
+# =============================================================================
+#  File: deploy/cloud/wireguard/wg0.conf.j2  (rendered to /etc/wireguard/wg0.conf)
+#
+#  Purpose
+#  WireGuard gateway config for the colo GPU box. It terminates the private
+#  tunnel from the home Pi so the inference endpoint is reachable only over the
+#  VPN. No traffic is routed to the internet (AllowedIPs is the Pi's /32 only),
+#  so this is a point-to-point management tunnel, not an exit node.
+#
+#  Firewall: only UDP/{{ wg_listen_port }} is opened publicly (see
+#  provision-gpu.yml); the inference port (8080) is bound to {{ wg_gateway_ip }}
+#  and never exposed.
+#
+#  Rendered by deploy/cloud/ansible/provision-gpu.yml. Keys come from
+#  ansible-vault; never commit real keys.
+#
+#  History
+#  Date         Author          Changes
+#  2026-06-19   Anubhav Sigdel  initial — colo gateway, single Pi peer
+# =============================================================================
+
+[Interface]
+Address = {{ wg_gateway_ip }}/24
+ListenPort = {{ wg_listen_port }}
+PrivateKey = {{ wg_gateway_private_key }}
+
+# Home Raspberry Pi (the only peer).
+[Peer]
+PublicKey = {{ wg_pi_public_key }}
+AllowedIPs = {{ wg_pi_ip }}/32
