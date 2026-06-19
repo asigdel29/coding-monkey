@@ -1,0 +1,52 @@
+# =============================================================================
+#  File: deploy/cloud/compose/llama-swap.yaml
+#
+#  Purpose
+#  llama-swap model map for the strong tier. llama-swap serves one
+#  OpenAI-compatible endpoint and, by default, keeps only ONE model resident:
+#  requesting a different `model` stops the running backend and starts the
+#  requested one (the "swap"). That is exactly the user's "one box, swap
+#  models" lifecycle — the box is sized for the larger model (Kimi K2.6), and
+#  GLM-5.2 stays warm as the everyday default.
+#
+#  The `model` ids here MUST match the ids in the Pi's `.monkey/config.json`
+#  local_models (so the orchestrator's GLM-5.2 / Kimi K2.6 requests resolve).
+#
+#  Tuning
+#  --tensor-split / --n-gpu-layers depend on the box's GPU count and VRAM; the
+#  values below are illustrative. Confirm the GGUF filenames/quants on the NVMe
+#  volume (Unsloth publishes dynamic GGUFs for both models).
+#
+#  History
+#  Date         Author          Changes
+#  2026-06-19   Anubhav Sigdel  initial — warm GLM-5.2, idle-unload Kimi K2.6
+# =============================================================================
+
+# Time a backend may take to become healthy after launch (large MoE cold start
+# is minutes — loading 350-600 GB from NVMe into VRAM).
+healthCheckTimeout: 600
+
+models:
+  # Everyday coding default. ttl 0 => never auto-unload; it stays warm and is
+  # only displaced when Kimi is explicitly requested (the swap).
+  "glm-5.2":
+    cmd: >
+      /app/llama-server
+      --model /models/glm-5.2-Q4_K_M.gguf
+      --host 127.0.0.1 --port ${PORT}
+      --n-gpu-layers 999
+      --ctx-size 32768
+      --flash-attn
+    ttl: 0
+
+  # Strong tier, loaded on escalation. Short ttl => unloads after idle so the
+  # GPUs are freed (and GLM can reload warm) when the hard task is done.
+  "kimi-k2.6":
+    cmd: >
+      /app/llama-server
+      --model /models/kimi-k2.6-Q4_K_M.gguf
+      --host 127.0.0.1 --port ${PORT}
+      --n-gpu-layers 999
+      --ctx-size 32768
+      --flash-attn
+    ttl: 300
