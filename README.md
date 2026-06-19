@@ -1,10 +1,17 @@
 # coding-monkey
 
 A single-binary coding-agent platform written in Rust. Drop `monkey` into any
-repo, bring your own API key, and run a swarm of AI agents — from the terminal
-or a web dashboard — scaled to whatever your machine can handle.
+repo, run a swarm of AI agents — from the terminal or a web dashboard — scaled
+to whatever your machine can handle, against **hosted APIs or your own
+open-weights models**.
 
 No runtime, no GC, no Node. One `monkey` binary.
+
+Run it **fully local and open-weights**: a small model on the Pi for trivial
+work, **GLM-5.2** for everyday coding, and **Kimi K2.6** for the hardest tasks —
+with an orchestrator that scores each task and escalates across the tiers. See
+[**docs/local-models.md**](docs/local-models.md) to set it up, or bring your own
+API key below.
 
 ```bash
 # 1. Clone and build
@@ -32,6 +39,11 @@ and host capacity, and tells you the next step.
 - **Bring-your-own-key, any model.** The LLM client speaks the OpenAI-compatible
   Chat Completions API, so OpenRouter (one key, hundreds of models) and OpenAI
   both work with zero config. Switch models by editing `.monkey/config.json`.
+- **Local-first, open-weights option.** Run entirely on your own hardware: a
+  small model on the Pi for trivial work, GLM-5.2 for everyday coding, Kimi K2.6
+  for the hardest tasks. An orchestrator scores each task's difficulty, routes it
+  to the right tier, and **escalates** to a stronger model when a run fails or
+  stalls — each model reachable at its own endpoint.
 - **Runs as many agents as your machine allows.** The deck probes free RAM and
   CPU at startup and caps concurrency so you never thrash the box. Check the
   number with `monkey doctor`.
@@ -53,44 +65,56 @@ and host capacity, and tells you the next step.
 | **OpenRouter** (default) | `OPENROUTER_API_KEY` | One key, many upstream models. Recommended. |
 | **OpenAI** | `OPENAI_API_KEY` | Direct to OpenAI. |
 
-### Self-hosted models
+### Local open-weights models & the orchestrator
 
-Point `monkey` at your own OpenAI-compatible server — [Ollama](https://ollama.com),
-llama.cpp's `server`, [vLLM](https://github.com/vllm-project/vllm), or LM Studio —
-with no API cost. Great on a Pi or LAN.
+Run `monkey` against open-weights models on your own hardware — served by
+[Ollama](https://ollama.com), llama.cpp's `server`, [vLLM](https://github.com/vllm-project/vllm),
+or LM Studio — with no API cost. Because the strongest open models don't fit a
+Pi, the recommended shape is **tiered**, and each model has **its own endpoint**:
 
-```bash
-# 1. Run a local model (example: Ollama)
-ollama serve &
-ollama pull qwen2.5-coder
+| Tier | Default model | Runs on | Role |
+| --- | --- | --- | --- |
+| Fast | Qwen2.5-Coder 3B | the Pi | trivial work, offline-capable |
+| Balanced | **GLM-5.2** | a bigger box | everyday coding (the default) |
+| Powerful | **Kimi K2.6** | a bigger box | hardest reasoning / debugging |
 
-# 2. Point monkey at it (base or full URL both work; key usually not needed)
-export MONKEY_SELF_HOSTED_URL=http://localhost:11434      # → /v1/chat/completions
-# export MONKEY_SELF_HOSTED_KEY=...                        # only if your server needs one
-
-# 3. Select the self-hosted provider in .monkey/config.json
-#    "default_provider": "self-hosted"
-monkey doctor       # shows the configured self-hosted endpoint
-monkey deck         # native agents now run against your local model
-```
-
-| Provider value | Env | Notes |
-| --- | --- | --- |
-| `self-hosted` | `MONKEY_SELF_HOSTED_URL` (+ optional `MONKEY_SELF_HOSTED_KEY`) | Any OpenAI-compatible endpoint. No key required for most local servers. |
-
-Any provider that exposes the OpenAI Chat Completions API works. Pick the default
-provider and model in `.monkey/config.json`:
+The orchestrator scores each task's difficulty, picks the initial tier, and
+**escalates** to the next-stronger model if a run fails or stalls
+(Pi → GLM-5.2 → Kimi K2.6). Declare the models in `.monkey/config.json` —
+`monkey init` scaffolds this local-first:
 
 ```json
 {
   "default_agent": "auto",
-  "default_provider": "openrouter",
+  "default_provider": "self-hosted",
   "default_tier": "balanced",
-  "fail_on": "high"
+  "default_model": "glm-5.2",
+  "fail_on": "high",
+  "local_models": [
+    { "id": "qwen2.5-coder-3b", "tier": "fast",     "base_url": "http://localhost:11434",    "context_window": 32768,  "host": "pi"  },
+    { "id": "glm-5.2",          "tier": "balanced", "base_url": "http://lan-box.local:8000",  "context_window": 200000, "host": "lan" },
+    { "id": "kimi-k2.6",        "tier": "powerful", "base_url": "http://lan-box.local:8001",  "context_window": 256000, "host": "lan" }
+  ]
 }
 ```
 
-See the built-in model lineup with `monkey models`.
+```bash
+monkey models --probe   # lists tier / host / endpoint, [up] or [down]
+monkey doctor           # includes a "Local models" reachability section
+```
+
+A single shared endpoint still works the old way (`MONKEY_SELF_HOSTED_URL` +
+optional `MONKEY_SELF_HOSTED_KEY`); to use a hosted API instead, set
+`default_provider` to `openrouter` or `openai` and export the matching key. See
+the built-in lineup with `monkey models`.
+
+- **Set it up:** [**docs/local-models.md**](docs/local-models.md) — serve the
+  small model on the Pi and the large models on a LAN box.
+- **Personal cloud:** [**docs/cloud-deployment.md**](docs/cloud-deployment.md) —
+  run GLM-5.2 + Kimi K2.6 on a self-managed colo GPU box over a private VPN, with
+  model-swapping and full Ansible automation under `deploy/cloud/`.
+- **How it compares:** [**docs/comparison.md**](docs/comparison.md) — coding-monkey
+  vs Claude Code vs OpenAI Codex.
 
 ---
 
@@ -148,8 +172,8 @@ Run `monkey <command> --help` for full flags.
 | `monkey ship` | typecheck → review → cso → pentest → push. |
 | `monkey pentest [install-hook \| status]` | Native-Rust pentest; optional pre-push gate. |
 | `monkey compliance [status \| verify \| evidence]` | SOC 2 audit-readiness pipeline. |
-| `monkey doctor` | Diagnostics: keys, git, agent CLI, host capacity. |
-| `monkey models` | List registered models with cost tiers. |
+| `monkey doctor` | Diagnostics: keys, git, agent CLI, host capacity, local-model reachability. |
+| `monkey models [--probe]` | List registered models with tier/host/endpoint; `--probe` checks local endpoints. |
 
 ---
 
@@ -160,7 +184,7 @@ folders are meant to be committed — they are the project's shared "agent brain
 
 ```
 .monkey/
-├── config.json          default agent, provider, tier, fail-on
+├── config.json          default agent, provider, tier, default_model, local_models, orchestrator
 ├── context/             committed — read as the agent system prompt
 │   ├── PROJECT.md
 │   ├── CONVENTIONS.md
@@ -197,13 +221,13 @@ trunk build crates/web/index.html
 
 ## Project layout
 
-Eight crates in a Cargo workspace:
+Nine crates in a Cargo workspace:
 
 | Crate | Role |
 | --- | --- |
 | `monkey-core` | Types, errors, model registry, repo detection, concurrency cap, memory watchdog, rate limiter. |
 | `monkey-agents` | Context assembly, secret redaction, audit log, PTY harness spawn (codex/claude-code/hermes). |
-| `monkey-runtime` | Native in-process agent engine: tools, agent loop, provider limiter, scheduler. |
+| `monkey-runtime` | Native in-process agent engine: tools, agent loop, provider limiter, scheduler, model orchestrator + escalation. |
 | `monkey-engulf` | Repo scanner, security audit, deployer, knowledge vault. |
 | `monkey-skills` | review / investigate / cso / ship skills + registry. |
 | `monkey-pentest-agent` | Pre-push hook + native-Rust pentest engine. |
