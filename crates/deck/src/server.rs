@@ -48,7 +48,7 @@ use tokio::sync::Mutex;
 
 use monkey_agents::{AuditEventType, AuditLogger};
 use monkey_runtime::{
-    native_agent_job, AgentConfig, AgentEvent, NativeLlm, ProviderLimiter, Scheduler,
+    escalating_agent_job, AgentConfig, AgentEvent, NativeLlm, ProviderLimiter, Scheduler,
     SchedulerConfig, ToolRegistry, WorkClass,
 };
 
@@ -170,6 +170,10 @@ struct AppState {
     limiter: Arc<ProviderLimiter>,
     /// Built-in tool registry for native agents.
     tools: Arc<ToolRegistry>,
+    /// Model-selection and escalation policy for native agents.
+    orchestrator: monkey_core::OrchestratorPolicy,
+    /// Preferred coding model id (e.g. `glm-5.2`), from config.
+    default_model: Option<String>,
     /// Ids of currently-running native agents (for the cap and listing).
     native_agents: Arc<Mutex<HashSet<String>>>,
     /// Most native agents allowed at once, from the lightweight budget —
@@ -246,9 +250,10 @@ pub async fn start_deck(opts: DeckOpts) -> anyhow::Result<DeckHandle> {
         SchedulerConfig::from_max_agents(native_max_agents),
         watchdog,
     ));
+    let cfg = load_config(&opts.cwd);
     let llm = Arc::new(NativeLlm::with_registry(
         default_provider_from_config(&opts.cwd),
-        registry_from_config(&opts.cwd),
+        monkey_core::ModelRegistry::with_config(&cfg),
     ));
     let limiter = Arc::new(ProviderLimiter::with_defaults());
     let tools = Arc::new(monkey_runtime::default_tools());
@@ -278,6 +283,8 @@ pub async fn start_deck(opts: DeckOpts) -> anyhow::Result<DeckHandle> {
         llm,
         limiter,
         tools,
+        orchestrator: cfg.orchestrator.clone(),
+        default_model: cfg.default_model.clone(),
         native_agents: Arc::new(Mutex::new(HashSet::new())),
         native_max_agents,
     });
@@ -859,7 +866,6 @@ async fn dispatch(
                 cfg.task_type = map_task_type(tt);
             }
             cfg.force_tier = tier.as_deref().and_then(map_tier);
-            let model = state.llm.pick(cfg.task_type, cfg.force_tier, None);
 
             // Forward the agent's events to this connection's outbound sink.
             let (ev_tx, ev_rx) = tokio::sync::mpsc::channel::<AgentEvent>(256);
@@ -875,14 +881,16 @@ async fn dispatch(
             } else {
                 WorkClass::Shared
             };
-            let job = native_agent_job(
+            let job = escalating_agent_job(
                 id.clone(),
                 class,
                 cfg,
                 Arc::clone(&state.llm),
                 Arc::clone(&state.limiter),
                 Arc::clone(&state.tools),
-                model,
+                state.llm.registry().clone(),
+                state.orchestrator.clone(),
+                state.default_model.clone(),
                 ev_tx,
             );
             match state.scheduler.submit(job) {
@@ -964,17 +972,15 @@ fn default_provider_from_config(cwd: &std::path::Path) -> monkey_core::Provider 
     }
 }
 
-/// Build the model registry for native agents, folding in any locally-served
-/// models declared in `.monkey/config.json`. Falls back to the builtin lineup
-/// when the file is absent or unparseable, so a missing/partial config never
-/// breaks startup.
-fn registry_from_config(cwd: &std::path::Path) -> monkey_core::ModelRegistry {
-    use monkey_core::{ModelRegistry, OrchestratorConfig};
+/// Load `.monkey/config.json` into an [`OrchestratorConfig`], returning
+/// defaults when the file is absent or unparseable so a missing/partial config
+/// never breaks startup. The result drives the model registry (local models),
+/// the orchestration policy, and the default coding model.
+fn load_config(cwd: &std::path::Path) -> monkey_core::OrchestratorConfig {
     std::fs::read_to_string(cwd.join(".monkey").join("config.json"))
         .ok()
-        .and_then(|raw| serde_json::from_str::<OrchestratorConfig>(&raw).ok())
-        .map(|cfg| ModelRegistry::with_config(&cfg))
-        .unwrap_or_else(ModelRegistry::with_builtin)
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
 }
 
 /// Map a wire task-type string to a [`monkey_core::TaskType`], defaulting to

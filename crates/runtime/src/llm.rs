@@ -125,6 +125,12 @@ impl NativeLlm {
         }
     }
 
+    /// The model registry backing this client — used by the orchestrator to
+    /// ladder up tiers (find the next-stronger model) during escalation.
+    pub fn registry(&self) -> &ModelRegistry {
+        &self.registry
+    }
+
     /// Choose a model for `task_type`, honoring an explicit tier/provider.
     pub fn pick(
         &self,

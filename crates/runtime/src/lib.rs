@@ -68,7 +68,8 @@ pub use limiter::{LimiterConfig, ProviderLimiter};
 pub use llm::{ChatResult, LlmError, NativeLlm};
 pub use orchestrator::{choose_model, next_stronger, score_difficulty, Difficulty};
 pub use scheduler::{
-    native_agent_job, AgentJob, Scheduler, SchedulerConfig, SchedulerStats, SubmitError, WorkClass,
+    escalating_agent_job, native_agent_job, AgentJob, Scheduler, SchedulerConfig, SchedulerStats,
+    SubmitError, WorkClass,
 };
 pub use state::{AgentConfig, AgentOutcome, AgentState, Message, Role, ToolCall};
 pub use tool::{Tool, ToolCtx, ToolRef, ToolRegistry, ToolResult};
