@@ -178,6 +178,10 @@ pub enum LocalHost {
     Pi,
     /// Runs on a separate LAN box (large model: e.g. GLM-5.2, Kimi K2.6).
     Lan,
+    /// Runs on a personal cloud box (a self-managed colo/home-lab GPU server),
+    /// reached over a private VPN. Same role as `Lan` for a large model, but
+    /// labels off-site inference so tools can show it is reached via the tunnel.
+    Cloud,
 }
 
 /// A locally-served, open-weights model declared in `.monkey/config.json`.
@@ -416,5 +420,23 @@ mod tests {
         assert_eq!(cfg.local_models.len(), 1);
         assert_eq!(cfg.local_models[0].tier, ModelTier::Balanced);
         assert_eq!(cfg.local_models[0].host, LocalHost::Lan);
+    }
+
+    #[test]
+    fn local_host_cloud_round_trips() {
+        // The `cloud` host (personal colo box over a VPN) parses and serializes.
+        let m: LocalModelDef = serde_json::from_str(
+            r#"{
+                "id": "kimi-k2.6",
+                "display_name": "Kimi K2.6 (cloud)",
+                "tier": "powerful",
+                "base_url": "http://10.10.0.1:8080",
+                "context_window": 256000,
+                "host": "cloud"
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(m.host, LocalHost::Cloud);
+        assert_eq!(serde_json::to_value(m.host).unwrap(), "cloud");
     }
 }
