@@ -28,7 +28,7 @@ use std::sync::{Arc, Mutex};
 
 use futures::FutureExt;
 
-use monkey_core::{MemoryWatchdog, ModelSpec};
+use monkey_core::{MemoryWatchdog, ModelRegistry, ModelSpec, OrchestratorPolicy};
 use thiserror::Error;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::Semaphore;
@@ -38,6 +38,7 @@ use crate::agent::{run_agent, LimitedBackend};
 use crate::event::AgentEvent;
 use crate::limiter::ProviderLimiter;
 use crate::llm::NativeLlm;
+use crate::orchestrator::run_agent_escalating;
 use crate::state::AgentConfig;
 use crate::tool::ToolRegistry;
 
@@ -251,6 +252,46 @@ pub fn native_agent_job(
         Box::pin(async move {
             let backend = Arc::new(LimitedBackend::new(llm, limiter));
             let _ = run_agent(job_id, cfg, tools, backend, model, events, cancel).await;
+        })
+    });
+    AgentJob { id, class, run }
+}
+
+/// Build an [`AgentJob`] that runs a native agent under the orchestrator:
+/// difficulty-based initial model selection plus escalation to a stronger
+/// model on failure or a guard, per `policy`. Unlike [`native_agent_job`], the
+/// model is chosen inside the job (an explicit `cfg.force_tier` still wins), so
+/// no model is passed in.
+#[allow(clippy::too_many_arguments)]
+pub fn escalating_agent_job(
+    id: String,
+    class: WorkClass,
+    cfg: AgentConfig,
+    llm: Arc<NativeLlm>,
+    limiter: Arc<ProviderLimiter>,
+    tools: Arc<ToolRegistry>,
+    registry: ModelRegistry,
+    policy: OrchestratorPolicy,
+    default_model: Option<String>,
+    events: Sender<AgentEvent>,
+) -> AgentJob {
+    let job_id = id.clone();
+    let run = Box::new(move |cancel: CancellationToken| -> JobFuture {
+        Box::pin(async move {
+            let backend = Arc::new(LimitedBackend::new(llm, limiter));
+            let _ = run_agent_escalating(
+                job_id,
+                cfg,
+                &registry,
+                &policy,
+                default_model.as_deref(),
+                None,
+                tools,
+                backend,
+                events,
+                cancel,
+            )
+            .await;
         })
     });
     AgentJob { id, class, run }

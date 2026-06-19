@@ -55,6 +55,16 @@ pub enum AgentEvent {
     },
     /// Cumulative token usage after a turn.
     Usage(TokenUsage),
+    /// The orchestrator retried the task on a stronger model after the
+    /// previous one failed or hit a guard. Non-terminal: a fresh run follows.
+    Escalated {
+        /// Model id that was abandoned.
+        from: String,
+        /// Stronger model id now handling the task.
+        to: String,
+        /// Why the escalation happened (the prior outcome).
+        reason: String,
+    },
     /// Terminal: the agent called `finish`.
     Finished {
         /// Final summary.

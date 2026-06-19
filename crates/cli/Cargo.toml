@@ -16,6 +16,7 @@ path = "src/main.rs"
 [dependencies]
 monkey-core = { path = "../core" }
 monkey-agents = { path = "../agents" }
+monkey-runtime = { path = "../runtime" }
 monkey-engulf = { path = "../engulf" }
 monkey-skills = { path = "../skills" }
 monkey-pentest-agent = { path = "../pentest-agent" }

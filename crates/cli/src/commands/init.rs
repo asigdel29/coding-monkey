@@ -9,6 +9,8 @@
    Date         Author          Changes
    2026-05-05   Anubhav Sigdel  initial scaffold
    2026-06-03   Anubhav Sigdel  scaffold AGENT.md; default_provider=openrouter
+   2026-06-19   Anubhav Sigdel  local-first default: self-hosted provider,
+                                 GLM-5.2 default, local_models lineup
 */
 
 use clap::Args as ClapArgs;
@@ -78,11 +80,43 @@ fn write_if_missing(p: &std::path::Path, body: &str) -> std::io::Result<()> {
     std::fs::write(p, body)
 }
 
+// Local-first defaults: native agents target open-weights models served on
+// your own hardware. The Pi runs a small model (Fast tier); a LAN box serves
+// GLM-5.2 (the everyday coding default) and Kimi K2.6 (hardest work). Edit the
+// `base_url`s to match your hosts, then verify with `monkey doctor`. Switch
+// `default_provider` to `openrouter`/`openai` to use a hosted API instead.
 const DEFAULT_CONFIG: &str = r#"{
   "default_agent": "auto",
-  "default_provider": "openrouter",
+  "default_provider": "self-hosted",
   "default_tier": "balanced",
-  "fail_on": "high"
+  "default_model": "glm-5.2",
+  "fail_on": "high",
+  "local_models": [
+    {
+      "id": "qwen2.5-coder-3b",
+      "display_name": "Qwen2.5-Coder 3B (Pi-local)",
+      "tier": "fast",
+      "base_url": "http://localhost:11434",
+      "context_window": 32768,
+      "host": "pi"
+    },
+    {
+      "id": "glm-5.2",
+      "display_name": "GLM-5.2 (LAN)",
+      "tier": "balanced",
+      "base_url": "http://lan-box.local:8000",
+      "context_window": 200000,
+      "host": "lan"
+    },
+    {
+      "id": "kimi-k2.6",
+      "display_name": "Kimi K2.6 (LAN)",
+      "tier": "powerful",
+      "base_url": "http://lan-box.local:8001",
+      "context_window": 256000,
+      "host": "lan"
+    }
+  ]
 }
 "#;
 

@@ -50,6 +50,10 @@ pub mod fs_guard;
 pub mod limiter;
 /// Tool-calling LLM chat client.
 pub mod llm;
+/// Difficulty-based model selection and escalation laddering.
+pub mod orchestrator;
+/// Reachability probe for local model endpoints.
+pub mod probe;
 /// Bounded, class-partitioned concurrent agent execution.
 pub mod scheduler;
 /// Conversation state: transcript, config, outcome.
@@ -64,8 +68,11 @@ pub use event::AgentEvent;
 pub use fs_guard::{FsError, FsGuard};
 pub use limiter::{LimiterConfig, ProviderLimiter};
 pub use llm::{ChatResult, LlmError, NativeLlm};
+pub use orchestrator::{choose_model, next_stronger, score_difficulty, Difficulty};
+pub use probe::endpoint_reachable;
 pub use scheduler::{
-    native_agent_job, AgentJob, Scheduler, SchedulerConfig, SchedulerStats, SubmitError, WorkClass,
+    escalating_agent_job, native_agent_job, AgentJob, Scheduler, SchedulerConfig, SchedulerStats,
+    SubmitError, WorkClass,
 };
 pub use state::{AgentConfig, AgentOutcome, AgentState, Message, Role, ToolCall};
 pub use tool::{Tool, ToolCtx, ToolRef, ToolRegistry, ToolResult};

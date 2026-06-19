@@ -15,7 +15,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::types::TaskType;
+use crate::types::{LocalModelDef, OrchestratorConfig, TaskType};
 
 /// Model performance tier. Selectors pick the cheapest tier that
 /// satisfies a task's class.
@@ -77,6 +77,25 @@ pub struct ModelSpec {
     pub api_key_env: Option<String>,
 }
 
+impl LocalModelDef {
+    /// Project a config entry onto a [`ModelSpec`]: a [`Provider::SelfHosted`]
+    /// model with this entry's own `base_url`/`api_key_env` and zero cost
+    /// (local inference is free).
+    pub fn to_spec(&self) -> ModelSpec {
+        ModelSpec {
+            id: self.id.clone(),
+            display_name: self.display_name.clone(),
+            provider: Provider::SelfHosted,
+            tier: self.tier,
+            input_cost_per_1k: 0.0,
+            output_cost_per_1k: 0.0,
+            context_window: self.context_window,
+            base_url: Some(self.base_url.clone()),
+            api_key_env: self.api_key_env.clone(),
+        }
+    }
+}
+
 /// In-memory catalogue of available models.
 #[derive(Debug, Clone)]
 pub struct ModelRegistry {
@@ -105,6 +124,19 @@ impl ModelRegistry {
         let mut r = Self::empty();
         for m in builtin_models() {
             r.register(m);
+        }
+        r
+    }
+
+    /// Builtin lineup plus the config's locally-served models. Each
+    /// [`LocalModelDef`] is registered as a [`Provider::SelfHosted`] model
+    /// carrying its own `base_url`, so a Pi-local model and LAN-box models
+    /// coexist with distinct endpoints. A local id equal to a builtin id
+    /// replaces the builtin (local wins).
+    pub fn with_config(cfg: &OrchestratorConfig) -> Self {
+        let mut r = Self::with_builtin();
+        for lm in &cfg.local_models {
+            r.register(lm.to_spec());
         }
         r
     }
@@ -322,5 +354,29 @@ mod tests {
         // Fast tasks must not route to Powerful.
         assert_eq!(tier_for_task(TaskType::Chat), ModelTier::Fast);
         assert_eq!(tier_for_task(TaskType::Review), ModelTier::Powerful);
+    }
+
+    #[test]
+    fn with_config_registers_local_models_with_endpoints() {
+        use crate::types::{LocalHost, LocalModelDef, OrchestratorConfig};
+        let cfg = OrchestratorConfig {
+            local_models: vec![LocalModelDef {
+                id: "glm-5.2".into(),
+                display_name: "GLM-5.2 (LAN)".into(),
+                tier: ModelTier::Balanced,
+                base_url: "http://lan-box.local:8000".into(),
+                api_key_env: None,
+                context_window: 200_000,
+                host: LocalHost::Lan,
+            }],
+            ..OrchestratorConfig::default()
+        };
+        let r = ModelRegistry::with_config(&cfg);
+        let m = r.get("glm-5.2").expect("local model registered");
+        assert_eq!(m.provider, Provider::SelfHosted);
+        assert_eq!(m.base_url.as_deref(), Some("http://lan-box.local:8000"));
+        assert_eq!(m.input_cost_per_1k, 0.0);
+        // Builtins remain present alongside the local additions.
+        assert!(r.get("gpt-5").is_some());
     }
 }

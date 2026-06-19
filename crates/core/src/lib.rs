@@ -52,13 +52,14 @@ pub mod types;
 pub mod watchdog;
 
 pub use concurrency::{max_concurrent_agents, AgentBudget, AgentClass, HostCapacity};
-pub use endpoints::{model_wire, provider_wire, ProviderWire};
+pub use endpoints::{model_wire, normalize_self_hosted_url, provider_wire, ProviderWire};
 pub use errors::Error;
 pub use ids::generate_id;
 pub use models::{tier_for_task, ModelRegistry, ModelSelector, ModelSpec, ModelTier, Provider};
 pub use ratelimit::{RateLimit, TokenBucket};
 pub use repos::{detect_repo, discover_repos, RepoComplexity, TechStack};
 pub use types::{
-    OrchestratorConfig, RepoConfig, SessionState, TaskState, TaskStatus, TaskType, TokenUsage,
+    EscalationTrigger, LocalHost, LocalModelDef, OrchestratorConfig, OrchestratorPolicy,
+    OrchestratorStrategy, RepoConfig, SessionState, TaskState, TaskStatus, TaskType, TokenUsage,
 };
 pub use watchdog::{AdmissionDenied, MemoryWatchdog};

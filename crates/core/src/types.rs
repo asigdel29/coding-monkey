@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use crate::models::ModelTier;
 use crate::repos::TechStack;
 
 // ─── Task lifecycle ─────────────────────────────────────────────────────────
@@ -167,6 +168,108 @@ pub struct Budget {
     pub max_seconds: Option<u64>,
 }
 
+/// Which host serves a local model. Documents the tiered topology so tools
+/// (`monkey models`, `monkey doctor`) can show where inference runs and why a
+/// large model is unreachable when the LAN box is down.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LocalHost {
+    /// Runs on the Raspberry Pi itself (small quantized model, offline-capable).
+    Pi,
+    /// Runs on a separate LAN box (large model: e.g. GLM-5.2, Kimi K2.6).
+    Lan,
+}
+
+/// A locally-served, open-weights model declared in `.monkey/config.json`.
+///
+/// Each entry becomes a [`crate::models::ModelSpec`] on the
+/// [`crate::models::Provider::SelfHosted`] provider with its own `base_url`,
+/// which is what lets a small Pi-local model and large LAN-box models coexist
+/// in one registry (see [`crate::models::ModelRegistry::with_config`]). Cost is
+/// always zero for local inference.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalModelDef {
+    /// Model id sent to the server (e.g. `glm-5.2`), also the registry key.
+    pub id: String,
+    /// Human-friendly display name.
+    pub display_name: String,
+    /// Performance tier this model fills.
+    pub tier: ModelTier,
+    /// Base or full chat-completions URL of the OpenAI-compatible server.
+    pub base_url: String,
+    /// Env var holding this endpoint's API key, if it needs one. Usually none.
+    #[serde(default)]
+    pub api_key_env: Option<String>,
+    /// Approximate context window in tokens.
+    pub context_window: u32,
+    /// Where this model runs (Pi vs LAN box).
+    pub host: LocalHost,
+}
+
+/// How the orchestrator chooses (and re-chooses) a model for a task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum OrchestratorStrategy {
+    /// Score task difficulty to pick the initial model, then escalate to a
+    /// stronger tier when a run trips an escalation trigger. The default.
+    DifficultyEscalation,
+    /// Static `task_type → tier` routing only; never escalate.
+    TierOnly,
+}
+
+/// An agent outcome that justifies retrying a task on a stronger model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EscalationTrigger {
+    /// The run errored (e.g. the model's endpoint was unreachable).
+    Failed,
+    /// The run hit a guard (max turns, or stuck repeating a tool call).
+    LimitReached,
+}
+
+/// Orchestration policy, deserialized from `.monkey/config.json`'s
+/// `orchestrator` object. All fields default, so the section is optional.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrchestratorPolicy {
+    /// Selection strategy.
+    #[serde(default = "default_strategy")]
+    pub strategy: OrchestratorStrategy,
+    /// Outcomes that trigger an escalation to the next-stronger model.
+    #[serde(default = "default_escalate_on")]
+    pub escalate_on: Vec<EscalationTrigger>,
+    /// Maximum number of escalations for a single task (a small cap keeps a
+    /// failing LAN box from looping the ladder).
+    #[serde(default = "default_max_escalations")]
+    pub max_escalations: u32,
+}
+
+fn default_strategy() -> OrchestratorStrategy {
+    OrchestratorStrategy::DifficultyEscalation
+}
+fn default_escalate_on() -> Vec<EscalationTrigger> {
+    vec![EscalationTrigger::Failed, EscalationTrigger::LimitReached]
+}
+fn default_max_escalations() -> u32 {
+    1
+}
+
+impl Default for OrchestratorPolicy {
+    fn default() -> Self {
+        Self {
+            strategy: default_strategy(),
+            escalate_on: default_escalate_on(),
+            max_escalations: default_max_escalations(),
+        }
+    }
+}
+
+impl OrchestratorPolicy {
+    /// Whether `trigger` should cause an escalation under this policy.
+    pub fn escalates_on(&self, trigger: EscalationTrigger) -> bool {
+        self.strategy != OrchestratorStrategy::TierOnly && self.escalate_on.contains(&trigger)
+    }
+}
+
 /// Top-level orchestrator config (deserialized from `.monkey/config.json`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrchestratorConfig {
@@ -179,6 +282,17 @@ pub struct OrchestratorConfig {
     /// Default model tier (`fast`, `balanced`, `powerful`).
     #[serde(default = "default_tier")]
     pub default_tier: ModelTierStr,
+    /// Preferred model id for everyday coding work, overriding tier-based
+    /// selection when set (e.g. `glm-5.2`). The orchestrator still escalates
+    /// to a stronger tier for hard tasks. `None` keeps pure tier routing.
+    #[serde(default)]
+    pub default_model: Option<String>,
+    /// Locally-served open-weights models folded into the registry at startup.
+    #[serde(default)]
+    pub local_models: Vec<LocalModelDef>,
+    /// Model-selection and escalation policy.
+    #[serde(default)]
+    pub orchestrator: OrchestratorPolicy,
     /// Severity that fails the gauntlet.
     #[serde(default = "default_fail_on")]
     pub fail_on: String,
@@ -209,6 +323,9 @@ impl Default for OrchestratorConfig {
             default_agent: default_agent(),
             default_provider: default_provider(),
             default_tier: default_tier(),
+            default_model: None,
+            local_models: Vec::new(),
+            orchestrator: OrchestratorPolicy::default(),
             fail_on: default_fail_on(),
             budget: Budget::default(),
         }
@@ -274,5 +391,30 @@ mod tests {
         let back: OrchestratorConfig = serde_json::from_str(&s).unwrap();
         assert_eq!(back.default_agent, c.default_agent);
         assert_eq!(back.fail_on, c.fail_on);
+    }
+
+    #[test]
+    fn config_parses_local_models_and_default_model() {
+        // A minimal config naming a local model deserializes via serde
+        // defaults; absent legacy fields fall back without error.
+        let raw = r#"{
+            "default_provider": "self-hosted",
+            "default_model": "glm-5.2",
+            "local_models": [
+                {
+                    "id": "glm-5.2",
+                    "display_name": "GLM-5.2 (LAN)",
+                    "tier": "balanced",
+                    "base_url": "http://lan-box.local:8000",
+                    "context_window": 200000,
+                    "host": "lan"
+                }
+            ]
+        }"#;
+        let cfg: OrchestratorConfig = serde_json::from_str(raw).unwrap();
+        assert_eq!(cfg.default_model.as_deref(), Some("glm-5.2"));
+        assert_eq!(cfg.local_models.len(), 1);
+        assert_eq!(cfg.local_models[0].tier, ModelTier::Balanced);
+        assert_eq!(cfg.local_models[0].host, LocalHost::Lan);
     }
 }

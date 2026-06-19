@@ -102,9 +102,17 @@ pub struct NativeLlm {
 }
 
 impl NativeLlm {
-    /// Build a client preferring `default_provider`. The HTTP client (and
-    /// its connection pool) is created once and cloned cheaply per call.
+    /// Build a client preferring `default_provider`, backed by the builtin
+    /// model registry. The HTTP client (and its connection pool) is created
+    /// once and cloned cheaply per call.
     pub fn new(default_provider: Provider) -> Self {
+        Self::with_registry(default_provider, ModelRegistry::with_builtin())
+    }
+
+    /// Build a client preferring `default_provider` and backed by an explicit
+    /// `registry` — used to inject the config's locally-served models (GLM-5.2,
+    /// Kimi K2.6, a Pi-local small model) so `pick` can select among them.
+    pub fn with_registry(default_provider: Provider, registry: ModelRegistry) -> Self {
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(120))
             .pool_max_idle_per_host(8)
@@ -112,9 +120,15 @@ impl NativeLlm {
             .expect("reqwest client");
         Self {
             http,
-            registry: ModelRegistry::with_builtin(),
+            registry,
             default_provider,
         }
+    }
+
+    /// The model registry backing this client — used by the orchestrator to
+    /// ladder up tiers (find the next-stronger model) during escalation.
+    pub fn registry(&self) -> &ModelRegistry {
+        &self.registry
     }
 
     /// Choose a model for `task_type`, honoring an explicit tier/provider.
