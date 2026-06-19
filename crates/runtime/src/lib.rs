@@ -52,6 +52,8 @@ pub mod limiter;
 pub mod llm;
 /// Difficulty-based model selection and escalation laddering.
 pub mod orchestrator;
+/// Reachability probe for local model endpoints.
+pub mod probe;
 /// Bounded, class-partitioned concurrent agent execution.
 pub mod scheduler;
 /// Conversation state: transcript, config, outcome.
@@ -67,6 +69,7 @@ pub use fs_guard::{FsError, FsGuard};
 pub use limiter::{LimiterConfig, ProviderLimiter};
 pub use llm::{ChatResult, LlmError, NativeLlm};
 pub use orchestrator::{choose_model, next_stronger, score_difficulty, Difficulty};
+pub use probe::endpoint_reachable;
 pub use scheduler::{
     escalating_agent_job, native_agent_job, AgentJob, Scheduler, SchedulerConfig, SchedulerStats,
     SubmitError, WorkClass,
