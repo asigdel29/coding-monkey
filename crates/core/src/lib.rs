@@ -52,7 +52,7 @@ pub mod types;
 pub mod watchdog;
 
 pub use concurrency::{max_concurrent_agents, AgentBudget, AgentClass, HostCapacity};
-pub use endpoints::{provider_wire, ProviderWire};
+pub use endpoints::{model_wire, provider_wire, ProviderWire};
 pub use errors::Error;
 pub use ids::generate_id;
 pub use models::{tier_for_task, ModelRegistry, ModelSelector, ModelSpec, ModelTier, Provider};

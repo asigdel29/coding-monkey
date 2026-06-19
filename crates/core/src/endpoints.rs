@@ -13,7 +13,7 @@
    2026-06-09   Anubhav Sigdel  initial — provider endpoint resolution
 */
 
-use crate::models::Provider;
+use crate::models::{ModelSpec, Provider};
 
 /// Environment variable holding a self-hosted endpoint's base or full URL.
 pub const SELF_HOSTED_URL_ENV: &str = "MONKEY_SELF_HOSTED_URL";
@@ -63,6 +63,28 @@ pub fn provider_wire(provider: Provider) -> Result<ProviderWire, String> {
     }
 }
 
+/// Resolve a *model's* endpoint and key, preferring a per-model override.
+///
+/// When `model.base_url` is set, the request targets that endpoint (normalized
+/// like a self-hosted URL) and reads an optional key from the env var named by
+/// `model.api_key_env`; the key is never required, matching local servers that
+/// take none. This is what lets several [`Provider::SelfHosted`] models point
+/// at different hosts. When `base_url` is `None`, resolution falls back to the
+/// provider-wide [`provider_wire`], so existing models behave exactly as before.
+pub fn model_wire(model: &ModelSpec) -> Result<ProviderWire, String> {
+    match &model.base_url {
+        Some(raw) => Ok(ProviderWire {
+            url: normalize_self_hosted_url(raw),
+            key: model
+                .api_key_env
+                .as_ref()
+                .and_then(|v| std::env::var(v).ok()),
+            key_required: false,
+        }),
+        None => provider_wire(model.provider),
+    }
+}
+
 /// Accept either a full chat-completions URL or a base URL and produce the
 /// full endpoint, so users can paste whatever their server prints (e.g.
 /// `http://localhost:11434` or `http://localhost:11434/v1`).
@@ -105,6 +127,37 @@ mod tests {
         let w = provider_wire(Provider::Openai).unwrap();
         assert!(w.url.contains("api.openai.com"));
         assert!(w.key_required);
+    }
+
+    fn spec(base_url: Option<&str>, api_key_env: Option<&str>) -> ModelSpec {
+        ModelSpec {
+            id: "local-test".into(),
+            display_name: "Local Test".into(),
+            provider: Provider::OpenRouter,
+            tier: crate::models::ModelTier::Balanced,
+            input_cost_per_1k: 0.0,
+            output_cost_per_1k: 0.0,
+            context_window: 8_192,
+            base_url: base_url.map(str::to_string),
+            api_key_env: api_key_env.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn model_base_url_overrides_provider() {
+        // A per-model base URL is normalized and used, with no key required,
+        // regardless of the model's nominal provider.
+        let w = model_wire(&spec(Some("http://lan-box:8000"), None)).unwrap();
+        assert_eq!(w.url, "http://lan-box:8000/v1/chat/completions");
+        assert!(!w.key_required);
+        assert!(w.key.is_none());
+    }
+
+    #[test]
+    fn model_without_base_url_falls_back_to_provider() {
+        // No override → identical to provider-wide resolution.
+        let m = spec(None, None);
+        assert_eq!(model_wire(&m).unwrap(), provider_wire(m.provider).unwrap());
     }
 
     #[test]
