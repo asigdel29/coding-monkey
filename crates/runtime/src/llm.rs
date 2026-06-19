@@ -150,7 +150,7 @@ impl NativeLlm {
         tools: &[serde_json::Value],
         max_output_tokens: u32,
     ) -> Result<ChatResult, LlmError> {
-        let wire = monkey_core::provider_wire(model.provider).map_err(LlmError::MissingKey)?;
+        let wire = monkey_core::model_wire(model).map_err(LlmError::MissingKey)?;
         if wire.key_required && wire.key.is_none() {
             return Err(LlmError::MissingKey(format!(
                 "no API key for {:?}",
@@ -197,7 +197,7 @@ impl NativeLlm {
         cancel: &CancellationToken,
         on_delta: &mut (dyn FnMut(&str) + Send),
     ) -> Result<ChatResult, LlmError> {
-        let wire = monkey_core::provider_wire(model.provider).map_err(LlmError::MissingKey)?;
+        let wire = monkey_core::model_wire(model).map_err(LlmError::MissingKey)?;
         if wire.key_required && wire.key.is_none() {
             return Err(LlmError::MissingKey(format!(
                 "no API key for {:?}",

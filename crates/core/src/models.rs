@@ -64,6 +64,17 @@ pub struct ModelSpec {
     pub output_cost_per_1k: f64,
     /// Approximate context window in tokens.
     pub context_window: u32,
+    /// Per-model endpoint override. When `Some`, the LLM client posts to this
+    /// (base or full chat-completions) URL instead of the provider-wide URL —
+    /// this is what lets several [`Provider::SelfHosted`] models live on
+    /// distinct hosts (a small model on the Pi, a large one on a LAN box).
+    /// `None` preserves provider-wide resolution. See [`crate::endpoints`].
+    #[serde(default)]
+    pub base_url: Option<String>,
+    /// Environment variable naming this model's API key, when its endpoint
+    /// needs one. `None` means no key (the common case for local servers).
+    #[serde(default)]
+    pub api_key_env: Option<String>,
 }
 
 /// In-memory catalogue of available models.
@@ -208,6 +219,8 @@ fn builtin_models() -> Vec<ModelSpec> {
             input_cost_per_1k: 0.0001,
             output_cost_per_1k: 0.0004,
             context_window: 1_000_000,
+            base_url: None,
+            api_key_env: None,
         },
         ModelSpec {
             id: "openai/gpt-4o".into(),
@@ -217,6 +230,8 @@ fn builtin_models() -> Vec<ModelSpec> {
             input_cost_per_1k: 0.0025,
             output_cost_per_1k: 0.01,
             context_window: 128_000,
+            base_url: None,
+            api_key_env: None,
         },
         ModelSpec {
             id: "meta-llama/llama-3.1-405b-instruct".into(),
@@ -226,6 +241,8 @@ fn builtin_models() -> Vec<ModelSpec> {
             input_cost_per_1k: 0.003,
             output_cost_per_1k: 0.003,
             context_window: 128_000,
+            base_url: None,
+            api_key_env: None,
         },
         ModelSpec {
             id: "gpt-5-mini".into(),
@@ -235,6 +252,8 @@ fn builtin_models() -> Vec<ModelSpec> {
             input_cost_per_1k: 0.0008,
             output_cost_per_1k: 0.004,
             context_window: 256_000,
+            base_url: None,
+            api_key_env: None,
         },
         ModelSpec {
             id: "gpt-5".into(),
@@ -244,6 +263,8 @@ fn builtin_models() -> Vec<ModelSpec> {
             input_cost_per_1k: 0.0025,
             output_cost_per_1k: 0.012,
             context_window: 256_000,
+            base_url: None,
+            api_key_env: None,
         },
         ModelSpec {
             id: "gpt-5-pro".into(),
@@ -253,6 +274,8 @@ fn builtin_models() -> Vec<ModelSpec> {
             input_cost_per_1k: 0.012,
             output_cost_per_1k: 0.06,
             context_window: 512_000,
+            base_url: None,
+            api_key_env: None,
         },
     ]
 }
