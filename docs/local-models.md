@@ -17,7 +17,13 @@ The orchestrator scores each task's difficulty and picks the initial tier, then
 > **Why not all on the Pi?** GLM-5 (355B–744B params) and Kimi K2.6 (1T params)
 > need roughly 135 GB and 350 GB of RAM even at 2-bit quantization — far beyond a
 > Pi's 16 GB. The Pi runs a small model locally and orchestrates; the large
-> models live on a capable LAN box.
+> models live on a capable box elsewhere.
+
+> **LAN box or personal cloud?** The "LAN box" below is the simplest case — a
+> capable machine on your home network. To run the large models off-site on a
+> self-managed colo GPU server reached over a private VPN (with model-swapping
+> to fit one box), follow [`cloud-deployment.md`](./cloud-deployment.md)
+> instead; the only config difference is the `base_url` and `host: cloud`.
 
 ## 1. Serve a small model on the Pi (Fast tier)
 

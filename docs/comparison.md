@@ -54,10 +54,12 @@ This is the sharpest divergence.
 
 Because the largest open models (GLM-5: 355B–744B params; Kimi K2.6: 1T params)
 cannot fit a Pi's 16 GB RAM, coding-monkey uses a **tiered topology**: the Pi runs
-a small model locally and orchestrates, while the large models run on a LAN box
-reached over HTTP. It stays "fully local" (your hardware, your network) without
-pretending a Pi can hold a trillion-parameter model. See
-[`local-models.md`](./local-models.md).
+a small model locally and orchestrates, while the large models run on a capable
+box reached over HTTP — a LAN machine
+([`local-models.md`](./local-models.md)) or a self-managed colo GPU server
+reached over a private VPN ([`cloud-deployment.md`](./cloud-deployment.md)). It
+stays "fully local" (your hardware, your network) without pretending a Pi can
+hold a trillion-parameter model.
 
 ## Concurrency and scale
 
