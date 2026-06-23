@@ -20,7 +20,7 @@ jobs:
     name: rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -30,7 +30,7 @@ jobs:
     name: clippy (--all-targets, -D warnings)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -45,7 +45,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --workspace --all-targets --locked
@@ -57,7 +57,7 @@ jobs:
     env:
       RUSTDOCFLAGS: -D warnings -D rustdoc::broken-intra-doc-links
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       # Skip the WASM crate — rustdoc can't resolve js-sys / wasm-bindgen
@@ -68,7 +68,7 @@ jobs:
     name: MSRV (rust-toolchain.toml)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       # Pin to the workspace's rust-toolchain.toml MSRV. The dependabot
       # bump from @1.88 → @1.100 was wrong: dtolnay/rust-toolchain's ref
       # is a Rust version, and Rust 1.100 doesn't exist yet (404 from
@@ -81,7 +81,7 @@ jobs:
     name: wasm32 build (monkey-web)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       # rust-toolchain.toml pins channel = "1.88". The dtolnay action
       # honors that file, so the `targets:` field on a different channel
       # alias is silently ignored. Add the wasm32 target via rustup
@@ -96,7 +96,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-test
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build -p monkey-cli --release --locked
